@@ -19,6 +19,7 @@
 
 * { box-sizing: border-box; }
 html { background: var(--background); scroll-behavior: smooth; }
+html:focus-within { scroll-behavior: smooth; }
 body {
   margin: 0;
   background: var(--background);
@@ -47,6 +48,8 @@ a, button, input, textarea, select { -webkit-tap-highlight-color: transparent; }
 
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .6; }
+:focus-visible { outline: 3px solid rgba(137, 52, 249, .45); outline-offset: 2px; }
 
 @layer components {
   .surface { @apply rounded-2xl border border-bcc-border bg-white shadow-[0_8px_28px_rgba(70,38,109,0.04)]; }
@@ -66,22 +69,23 @@ button { cursor: pointer; }
   .app-shell { background: #f8f7ff; overflow-x: hidden; }
   .app-header { @apply border-b border-[#ebe8f3]/90 bg-[#fbfaff]/90 backdrop-blur-xl; }
   .page-wrap { @apply mx-auto min-h-[calc(100vh-64px)] w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8; }
-  .page-enter { animation: page-in 420ms cubic-bezier(.22,1,.36,1) both; }
+  .page-enter { animation: page-in 220ms cubic-bezier(.22,1,.36,1) both; }
   .hover-lift { @apply transition duration-200 hover:-translate-y-0.5 hover:border-bcc-violet/35 hover:shadow-[0_14px_30px_rgba(70,38,109,0.08)]; }
   .command-search { @apply inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#e8e5f1] bg-white px-3.5 text-left text-sm text-[#8a8895] shadow-[0_4px_16px_rgba(70,38,109,0.04)] transition hover:border-bcc-lilac hover:text-bcc-ink focus:outline-none focus:ring-4 focus:ring-bcc-lilac/50; }
   .dashboard-panel { @apply rounded-2xl border border-[#e9e6f0] bg-white shadow-[0_8px_28px_rgba(70,38,109,0.045)]; }
   .dashboard-row { @apply border-t border-[#eeebf3] first:border-t-0; }
-  .stagger-1 { animation: page-in 420ms 50ms cubic-bezier(.22,1,.36,1) both; }
-  .stagger-2 { animation: page-in 420ms 100ms cubic-bezier(.22,1,.36,1) both; }
-  .stagger-3 { animation: page-in 420ms 150ms cubic-bezier(.22,1,.36,1) both; }
-  .stagger-4 { animation: page-in 420ms 200ms cubic-bezier(.22,1,.36,1) both; }
-  .progress-in { animation: progress-in 700ms 180ms cubic-bezier(.22,1,.36,1) both; }
+  .stagger-1 { animation: page-in 220ms 30ms cubic-bezier(.22,1,.36,1) both; }
+  .stagger-2 { animation: page-in 220ms 60ms cubic-bezier(.22,1,.36,1) both; }
+  .stagger-3 { animation: page-in 220ms 90ms cubic-bezier(.22,1,.36,1) both; }
+  .stagger-4 { animation: page-in 220ms 120ms cubic-bezier(.22,1,.36,1) both; }
+  .progress-in { animation: progress-in 420ms 80ms cubic-bezier(.22,1,.36,1) both; }
+  .skeleton { @apply animate-pulse rounded-xl bg-[#eeeaf6]; }
   .notification-dot { animation: soft-pulse 2.4s ease-in-out infinite; }
 }
 
 @media (max-width: 639px) {
   .app-shell { width: 100vw; max-width: 100vw; }
-  .page-wrap { width: calc(100vw - 32px); max-width: calc(100vw - 32px); margin-left: 16px; margin-right: 16px; min-width: 0; overflow-x: hidden; padding-left: 0; padding-right: 0; }
+  .page-wrap { width: 100%; max-width: 100%; margin: 0; min-width: 0; overflow-x: hidden; padding-left: 16px; padding-right: 16px; }
   .page-wrap > * { min-width: 0; }
 }
 

@@ -10,7 +10,7 @@ copy .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3004` for the local production smoke, or use the port printed by `npm run dev`.
 
 ## Environment variables
 
@@ -19,11 +19,11 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
 
-Supabase is the production source of truth. Without env variables, local development mode uses generic seed data and local persistence only to verify the interface.
+Supabase is the production source of truth. Without env variables, the clearly marked local mode uses generic seed data and local persistence only for development.
 
 ## Supabase setup
 
-Apply `supabase/migrations/202608100001_initial.sql`, create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
+Apply both migrations in order: `202608100001_initial.sql`, then `202608100002_optimization.sql`. The second migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
 
 ## Commands
 
@@ -33,6 +33,8 @@ npm run typecheck
 npm run lint
 npm run build
 npm run start
+npm test
+npm run test:e2e
 ```
 
 ## Features
@@ -44,6 +46,9 @@ npm run start
 - Cross-entity relations and Activity log.
 - Calendar aggregation and decision-support analytics.
 - PWA manifest, maskable icon, service worker and offline indicator.
+- URL-persistent search, filters, pagination and list/board/radar views.
+- Russian interface with stable English enum values in storage.
+- Radix Dialog focus management, reduced-motion support and 44px touch targets.
 
 ## Docs
 

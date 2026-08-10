@@ -1,6 +1,7 @@
 import { getSupabaseBrowserClient } from "./supabase/client";
 import { SEED_DATA } from "./seed";
-import { displayName, getModule, type AnyRecord, type ModuleKey } from "./types";
+import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./search";
+import { displayName, getModule, type AnyRecord, type ModuleKey, type RecordListQuery, type RecordPage, type WorkspaceSearchResult } from "./types";
 
 const supabase = getSupabaseBrowserClient();
 export const isCloudMode = Boolean(supabase);
@@ -23,6 +24,42 @@ function readLocal(module: ModuleKey): AnyRecord[] {
 function writeLocal(module: ModuleKey, rows: AnyRecord[]) {
   window.localStorage.setItem(localKey(module), JSON.stringify(rows));
   window.dispatchEvent(new CustomEvent("bcc:data-changed", { detail: module }));
+}
+
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+function safePage(query: RecordListQuery = {}) {
+  const page = Math.max(1, Math.floor(query.page ?? 1));
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(query.pageSize ?? DEFAULT_PAGE_SIZE)));
+  return { page, pageSize };
+}
+
+function dateField(row: AnyRecord): string {
+  return String(row.due_date ?? row.date_start ?? row.planned_date ?? row.next_follow_up_at ?? row.date ?? row.updated_at ?? "");
+}
+
+function searchFields(row: AnyRecord, module: ModuleKey): string[] {
+  const config = getModule(module);
+  return (config?.searchFields ?? []).map((field) => String(row[field] ?? ""));
+}
+
+function matchesQuery(row: AnyRecord, module: ModuleKey, query: RecordListQuery): boolean {
+  if (query.statuses?.length && !query.statuses.includes(String(row.status ?? row.relationship_state ?? row.change_state ?? row.ring ?? ""))) return false;
+  if (query.q) {
+    const needle = normalizeText(query.q);
+    if (needle && !searchFields(row, module).some((value) => normalizeText(value).includes(needle))) return false;
+  }
+  const date = dateField(row);
+  if (query.dateFrom && date && date < query.dateFrom) return false;
+  if (query.dateTo && date && date > query.dateTo) return false;
+  return true;
+}
+
+function sortRows(rows: AnyRecord[], query: RecordListQuery): AnyRecord[] {
+  const field = query.sort?.field ?? "updated_at";
+  const direction = query.sort?.direction === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => String(a[field] ?? "").localeCompare(String(b[field] ?? ""), "ru", { numeric: true }) * direction);
 }
 
 async function logActivity(action: string, entityType: string, entityId: string, message: string) {
@@ -55,13 +92,38 @@ export async function signUp(email: string, password: string) {
 
 export async function signOut() { if (supabase) await supabase.auth.signOut(); }
 
-export async function loadRecords(module: ModuleKey): Promise<AnyRecord[]> {
+export async function listRecords(module: ModuleKey, query: RecordListQuery = {}): Promise<RecordPage> {
   const config = getModule(module);
-  if (!config) return [];
-  if (!supabase) return readLocal(module).filter((row) => !row.archived_at);
-  const { data, error } = await supabase.from(config.table).select("*").is("archived_at", null).order("updated_at", { ascending: false });
+  if (!config) return { items: [], total: 0, page: 1, pageSize: DEFAULT_PAGE_SIZE, hasMore: false };
+  const { page, pageSize } = safePage(query);
+  if (!supabase) {
+    const rows = sortRows(readLocal(module).filter((row) => !row.archived_at && matchesQuery(row, module, query)), query);
+    const start = (page - 1) * pageSize;
+    return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, hasMore: start + pageSize < rows.length };
+  }
+  const allowedColumns = new Set(["id", "owner_id", "created_at", "updated_at", "archived_at", "title", "name", "first_name", "last_name", "description", "status", "priority", "direction", "due_date", "date_start", "planned_date", "next_follow_up_at", "date", "project_id", "health_score", "health_state", "last_activity_at", "registration_target", "registrations", "last_interaction_at", "relationship_state", "ring", "change_state", "last_reviewed_at", "total_xp", "current_quarter_xp", "track", "level", "next_action", ...config.searchFields, ...config.fields.map((field) => field.key)]);
+  const selectColumns = Array.from(allowedColumns).join(",");
+  const sortField = allowedColumns.has(query.sort?.field ?? "") ? query.sort!.field : "updated_at";
+  let request = supabase.from(config.table).select(selectColumns, { count: "exact" }).is("archived_at", null).order(sortField, { ascending: query.sort?.direction === "asc" });
+  if (query.statuses?.length && config.fields.some((field) => field.key === "status")) request = request.in("status", query.statuses);
+  if (query.q?.trim()) {
+    const needle = query.q.trim().replace(/[%,()]/g, " ").replace(/\s+/g, " ");
+    const clauses = config.searchFields.map((field) => `${field}.ilike.%${needle}%`).join(",");
+    if (clauses) request = request.or(clauses);
+  }
+  const dateColumn = module === "events" ? "date_start" : module === "people" ? "next_follow_up_at" : module === "content" ? "planned_date" : module === "interactions" ? "date" : ["tasks", "commitments"].includes(module) ? "due_date" : null;
+  if (dateColumn && query.dateFrom) request = request.gte(dateColumn, query.dateFrom);
+  if (dateColumn && query.dateTo) request = request.lte(dateColumn, query.dateTo);
+  const start = (page - 1) * pageSize;
+  const { data, error, count } = await request.range(start, start + pageSize - 1);
   if (error) throw new Error(error.message);
-  return (data ?? []) as AnyRecord[];
+  const total = count ?? data?.length ?? 0;
+  return { items: (data ?? []) as unknown as AnyRecord[], total, page, pageSize, hasMore: start + pageSize < total };
+}
+
+export async function loadRecords(module: ModuleKey, query: RecordListQuery = {}): Promise<AnyRecord[]> {
+  const result = await listRecords(module, { pageSize: MAX_PAGE_SIZE, ...query });
+  return result.items;
 }
 
 export async function loadRecord(module: ModuleKey, id: string): Promise<AnyRecord | null> {
@@ -85,22 +147,49 @@ export async function loadActivity(entityType?: string, entityId?: string): Prom
   return (data ?? []) as AnyRecord[];
 }
 
-export async function createRecord(module: ModuleKey, input: Record<string, unknown>): Promise<AnyRecord> {
+async function logActivities(activities: Array<{ action: string; entityType: string; entityId: string; message: string }>) {
+  if (!activities.length) return;
+  if (supabase) {
+    const user = await supabase.auth.getUser();
+    if (!user.data.user) return;
+    const ownerId = user.data.user.id;
+    const timestamp = new Date().toISOString();
+    const { error } = await supabase.from("activity_log").insert(activities.map((activity) => ({ id: crypto.randomUUID(), action: activity.action, entity_type: activity.entityType, entity_id: activity.entityId, message: activity.message, created_at: timestamp, owner_id: ownerId })));
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const key = "bcc-hub:activity";
+  const rows = JSON.parse(window.localStorage.getItem(key) ?? "[]") as AnyRecord[];
+  const timestamp = new Date().toISOString();
+  const next = activities.map((activity) => ({ id: crypto.randomUUID(), action: activity.action, entity_type: activity.entityType, entity_id: activity.entityId, message: activity.message, created_at: timestamp, owner_id: ownerKey() }));
+  window.localStorage.setItem(key, JSON.stringify([...next, ...rows].slice(0, 200)));
+}
+
+export async function createRecords(module: ModuleKey, inputs: Array<Record<string, unknown>>): Promise<AnyRecord[]> {
   const config = getModule(module);
   if (!config) throw new Error("Unknown module");
+  if (!inputs.length) return [];
   const timestamp = new Date().toISOString();
   if (!supabase) {
-    const record: AnyRecord = { id: crypto.randomUUID(), owner_id: ownerKey(), created_at: timestamp, updated_at: timestamp, ...input };
-    writeLocal(module, [record, ...readLocal(module)]);
-    await logActivity("entity created", module, record.id, `${displayName(record)} создано`);
-    return record;
+    const records = inputs.map((input) => ({ id: crypto.randomUUID(), owner_id: ownerKey(), created_at: timestamp, updated_at: timestamp, ...input }));
+    writeLocal(module, [...records, ...readLocal(module)]);
+    await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
+    return records;
   }
   const user = await supabase.auth.getUser();
   if (!user.data.user) throw new Error("Нужна авторизация");
-  const { data, error } = await supabase.from(config.table).insert({ ...input, owner_id: user.data.user.id, created_at: timestamp, updated_at: timestamp }).select().single();
+  const ownerId = user.data.user.id;
+  const { data, error } = await supabase.from(config.table).insert(inputs.map((input) => ({ ...input, owner_id: ownerId, created_at: timestamp, updated_at: timestamp }))).select();
   if (error) throw new Error(error.message);
-  await logActivity("entity created", module, data.id, `${displayName(data as AnyRecord)} создано`);
-  return data as AnyRecord;
+  const records = (data ?? []) as AnyRecord[];
+  await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
+  return records;
+}
+
+export async function createRecord(module: ModuleKey, input: Record<string, unknown>): Promise<AnyRecord> {
+  const [record] = await createRecords(module, [input]);
+  if (!record) throw new Error("Не удалось создать запись");
+  return record;
 }
 
 export async function updateRecord(module: ModuleKey, id: string, input: Record<string, unknown>): Promise<AnyRecord> {
@@ -168,6 +257,20 @@ export async function addAmbassadorContribution(ambassadorId: string, input: { t
     const user = await supabase.auth.getUser();
     if (!user.data.user) throw new Error("Нужна авторизация");
     contribution.owner_id = user.data.user.id;
+    const { error: atomicError } = await supabase.rpc("apply_ambassador_contribution", {
+      p_ambassador_id: ambassadorId,
+      p_type: contribution.type,
+      p_base_xp: contribution.base_xp,
+      p_multiplier: contribution.multiplier,
+      p_final_xp: contribution.final_xp,
+      p_date: contribution.date,
+      p_status: contribution.status,
+      p_review_note: contribution.review_note ?? null
+    });
+    if (!atomicError) {
+      await logActivity("XP added", "ambassadors", ambassadorId, `${input.final_xp} XP добавлено через атомарный ledger`);
+      return;
+    }
     const { error } = await supabase.from("ambassador_contributions").insert(contribution);
     if (error) throw new Error(error.message);
     const { data: ledger } = await supabase.from("ambassador_contributions").select("final_xp").eq("ambassador_id", ambassadorId).eq("status", "Approved");
@@ -183,26 +286,31 @@ export async function addWorkLog(taskId: string, input: { done: string; people?:
   await logActivity("work log added", "tasks", taskId, message);
 }
 
-export async function searchAll(query: string): Promise<Array<AnyRecord & { module: ModuleKey }>> {
+function resultTitle(row: AnyRecord): string {
+  return displayName(row);
+}
+
+export async function searchAll(query: string, limit = 40): Promise<WorkspaceSearchResult[]> {
+  const normalized = query.trim();
+  if (!normalized) return [];
+  if (supabase) {
+    const { data, error } = await supabase.rpc("workspace_search", { search_text: normalized, result_limit: limit });
+    if (!error && data) return data as WorkspaceSearchResult[];
+  }
   const modules = Object.keys(SEED_DATA) as ModuleKey[];
-  const records = (await Promise.all(modules.map(async (module) => ({ module, rows: await loadRecords(module) })))).flatMap(({ module, rows }) => rows.map((row) => ({ ...row, module })));
-  const normalized = query.trim().toLowerCase();
-  return records.filter((row) => !normalized || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(normalized))).slice(0, 40);
+  const perModule = Math.max(3, Math.ceil(limit / modules.length));
+  const pages = await Promise.all(modules.map(async (module) => ({ module, rows: await loadRecords(module, { q: normalized, pageSize: perModule }) })));
+  return pages.flatMap(({ module, rows }) => rows.flatMap((row) => {
+    const rank = rankSearchRecord(row, getModule(module)?.searchFields ?? [], normalized);
+    return rank > 0 ? [{ module, id: String(row.id), title: resultTitle(row), subtitle: String(row.description ?? row.position ?? row.category ?? ""), rank }] : [];
+  })).sort((a, b) => b.rank - a.rank).slice(0, limit);
+}
+
+export async function findPotentialDuplicates(module: ModuleKey, input: Record<string, string>, limit = 5): Promise<AnyRecord[]> {
+  const rows = await loadRecords(module, { pageSize: MAX_PAGE_SIZE });
+  return findDuplicateCandidates(module, rows, input, limit);
 }
 
 export async function findPotentialDuplicate(module: ModuleKey, input: Record<string, string>): Promise<AnyRecord | null> {
-  const rows = await loadRecords(module);
-  const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-  const email = normalize(input.email);
-  const phone = normalize(input.phone);
-  const name = normalize([input.first_name, input.last_name].filter(Boolean).join(" "));
-  const title = normalize(input.title ?? input.name);
-  return rows.find((row) => {
-    if (module === "people" && email && normalize(row.email) === email) return true;
-    if (module === "people" && phone && normalize(row.phone) === phone) return true;
-    if (module === "people" && name && normalize([row.first_name, row.last_name].filter(Boolean).join(" ")) === name && normalize(row.organization_name) === normalize(input.organization_name)) return true;
-    if (module === "organizations" && title && normalize(row.name) === title) return true;
-    if (module === "projects" && title && normalize(row.title) === title) return true;
-    return false;
-  }) ?? null;
+  return (await findPotentialDuplicates(module, input, 1))[0] ?? null;
 }

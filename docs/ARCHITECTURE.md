@@ -18,12 +18,12 @@ Every entity list has a detail route: `/<module>/<id>`. Global Quick Add and Ctr
 - Tailwind CSS tokens are copied from `design.md`: white base, BCC violet, lilac/cyan accents, soft radius and restrained shadows.
 - Supabase browser SDK is the cloud-first repository when both public env variables exist.
 - When env is absent, local mode persists generic development seed data in localStorage so the app remains runnable for UI verification. This is a deliberate development fallback, not the production persistence path.
-- Middleware protects routes when Supabase is configured. Registration is not exposed in the UI.
+- `proxy.ts` protects routes when Supabase is configured. Registration is not exposed in the UI.
 - PWA shell is served through `public/manifest.webmanifest` and `public/sw.js`.
 
 ## Data flow
 
-`component -> lib/data.ts -> Supabase table + activity_log`.
+`component -> TanStack Query -> lib/data.ts -> Supabase table + activity_log`.
 
 Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-entity links go through `entity_relations`; the UI does not rely on a visual-only relationship.
 
@@ -32,4 +32,7 @@ Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-
 - Project Health is deterministic and explainable.
 - Event readiness is based on registration progress and critical task checks.
 - Ambassador XP is user-confirmed; no automatic reach multiplier and no fake AI.
-- Search uses Postgres-backed list queries in cloud mode and the same indexed records in local mode.
+- `listRecords` applies server-side filters, ranges and counts in cloud mode; local mode uses bounded pagination and normalized matching.
+- Global search calls the Postgres `workspace_search` function when available and falls back to ranked bounded queries while a migration is pending.
+- Task boards group in one pass through a `Map`; Meetup templates use one bulk insert; XP contribution uses one atomic Postgres function.
+- URL parameters are the source of truth for list query state, so reload and shared links preserve the current view.
