@@ -2,6 +2,10 @@
   "name": "bcc-hub-devrel-os",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4"
+  },
   "engines": {
     "node": "22.x"
   },
