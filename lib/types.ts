@@ -13,6 +13,32 @@ export type AnyRecord = {
   [key: string]: any;
 };
 
+export type RecordListQuery = {
+  q?: string;
+  statuses?: string[];
+  page?: number;
+  pageSize?: number;
+  sort?: { field: string; direction: "asc" | "desc" };
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type RecordPage<T = AnyRecord> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+};
+
+export type WorkspaceSearchResult = {
+  module: ModuleKey;
+  id: string;
+  title: string;
+  subtitle?: string;
+  rank: number;
+};
+
 export type ModuleKey =
   | "projects" | "tasks" | "people" | "organizations" | "interactions" | "commitments"
   | "events" | "content" | "communities" | "ambassadors" | "tech-radar" | "documents"

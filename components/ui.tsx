@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, X } from "lucide-react";
-import { useEffect } from "react";
+import { Dialog } from "radix-ui";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
 export function Button({ variant = "primary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "brand" | "secondary" | "ghost" }) {
@@ -14,14 +14,15 @@ export function IconButton({ label, className = "", ...props }: ButtonHTMLAttrib
 }
 
 export function Modal({ open, title, description, onClose, children, wide = false }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  useEffect(() => { if (!open) return; const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [open, onClose]);
-  if (!open) return null;
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1D1D1D]/30 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
-    <div className={`max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-popover sm:rounded-3xl sm:p-6 ${wide ? "max-w-2xl" : "max-w-lg"}`}>
-      <div className="mb-5 flex items-start justify-between gap-4"><div><h2 className="text-xl font-semibold tracking-[-0.025em]">{title}</h2>{description && <p className="mt-1 text-sm text-[#74747C]">{description}</p>}</div><IconButton label="Закрыть" onClick={onClose}><X size={18} /></IconButton></div>
-      {children}
-    </div>
-  </div>;
+  return <Dialog.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+    <Dialog.Portal>
+      <Dialog.Overlay className="fixed inset-0 z-50 bg-[#1D1D1D]/30 backdrop-blur-[2px]" />
+      <Dialog.Content className={`fixed inset-x-0 bottom-0 z-50 max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-popover outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:p-6 ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"}`}>
+        <div className="mb-5 flex items-start justify-between gap-4"><div><Dialog.Title className="text-xl font-semibold tracking-[-0.025em]">{title}</Dialog.Title>{description && <Dialog.Description className="mt-1 text-sm text-[#74747C]">{description}</Dialog.Description>}</div><Dialog.Close asChild><IconButton label="Закрыть"><X size={18} /></IconButton></Dialog.Close></div>
+        {children}
+      </Dialog.Content>
+    </Dialog.Portal>
+  </Dialog.Root>;
 }
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
@@ -32,6 +33,6 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) { return <textarea className={`textarea ${className}`} {...props} />; }
 export function Select({ children, className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) { return <select className={`input ${className}`} {...props}>{children}</select>; }
 
-export function LoadingState({ label = "Загружаем рабочие данные" }: { label?: string }) { return <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-[#74747C]"><Loader2 className="animate-spin" size={18} />{label}</div>; }
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) { return <div className="surface-muted flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center"><div className="text-3xl">!</div><p className="max-w-md text-sm text-[#74747C]">{message}</p>{onRetry && <Button variant="secondary" onClick={onRetry}>Повторить</Button>}</div>; }
-export function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) { return <div className="surface-muted flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-bcc-lilac text-2xl text-bcc-deep">+</div><h3 className="text-lg font-semibold">{title}</h3><p className="mt-1 max-w-sm text-sm leading-6 text-[#74747C]">{description}</p>{action && <div className="mt-5">{action}</div>}</div>; }
+export function LoadingState({ label = "Загружаем рабочие данные" }: { label?: string }) { return <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-[#74747C]" role="status" aria-live="polite"><Loader2 className="animate-spin" size={18} />{label}</div>; }
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) { return <div className="surface-muted flex min-h-48 flex-col items-center justify-center gap-3 p-6 text-center" role="alert"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FDECEC] text-xl font-semibold text-[#AF3030]">!</div><p className="max-w-md text-sm text-[#74747C]">{message}</p>{onRetry && <Button variant="secondary" onClick={onRetry}>Повторить</Button>}</div>; }
+export function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) { return <div className="surface-muted flex min-h-64 flex-col items-center justify-center px-6 py-10 text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-bcc-lilac text-2xl text-bcc-deep" aria-hidden="true">+</div><h3 className="text-lg font-semibold">{title}</h3><p className="mt-1 max-w-sm text-sm leading-6 text-[#74747C]">{description}</p>{action && <div className="mt-5">{action}</div>}</div>; }

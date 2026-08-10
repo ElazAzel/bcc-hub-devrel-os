@@ -5,37 +5,37 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Database, FileText, FolderKanban, Home, LogOut, Menu, MoreHorizontal, Newspaper, Plus, Radar, Search, Settings, Users, X, Zap } from "lucide-react";
 import { signOut } from "@/lib/data";
+import { moduleCopy } from "@/lib/i18n";
 import { type ModuleKey } from "@/lib/types";
 import { CommandPalette } from "./command-palette";
 import { IconButton } from "./ui";
 import { QuickAdd } from "./quick-add";
 
 const mainNav: Array<{ href: string; label: string; icon: typeof Home; module?: ModuleKey }> = [
-  { href: "/", label: "Overview", icon: Home },
-  { href: "/projects", label: "Projects", icon: FolderKanban, module: "projects" },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks" },
-  { href: "/people", label: "People", icon: Users, module: "people" },
-  { href: "/events", label: "Events", icon: CalendarDays, module: "events" },
-  { href: "/content", label: "Content", icon: Newspaper, module: "content" },
-  { href: "/ambassadors", label: "Ambassadors", icon: Zap, module: "ambassadors" },
-  { href: "/communities", label: "Communities", icon: Users, module: "communities" },
-  { href: "/tech-radar", label: "Tech Radar", icon: Radar, module: "tech-radar" },
-  { href: "/knowledge", label: "Knowledge", icon: Database, module: "knowledge" }
+  { href: "/", label: "Обзор", icon: Home },
+  { href: "/projects", label: moduleCopy("projects").label, icon: FolderKanban, module: "projects" },
+  { href: "/tasks", label: moduleCopy("tasks").label, icon: CheckSquare, module: "tasks" },
+  { href: "/people", label: moduleCopy("people").label, icon: Users, module: "people" },
+  { href: "/events", label: moduleCopy("events").label, icon: CalendarDays, module: "events" },
+  { href: "/content", label: moduleCopy("content").label, icon: Newspaper, module: "content" },
+  { href: "/ambassadors", label: moduleCopy("ambassadors").label, icon: Zap, module: "ambassadors" },
+  { href: "/communities", label: moduleCopy("communities").label, icon: Users, module: "communities" },
+  { href: "/tech-radar", label: moduleCopy("tech-radar").label, icon: Radar, module: "tech-radar" },
+  { href: "/knowledge", label: moduleCopy("knowledge").label, icon: Database, module: "knowledge" }
 ];
 
 const secondaryNav = [
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/settings", label: "Settings", icon: Settings }
+  { href: "/analytics", label: "Аналитика", icon: BarChart3 },
+  { href: "/documents", label: "Документы", icon: FileText },
+  { href: "/calendar", label: "Календарь", icon: CalendarDays },
+  { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
 const mobileNav = [
-  { href: "/", label: "Home", icon: Home },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/people", label: "People", icon: Users },
-  { href: "/more", label: "More", icon: MoreHorizontal }
+  { href: "/", label: "Главная", icon: Home },
+  { href: "/projects", label: "Проекты", icon: FolderKanban },
+  { href: "/tasks", label: "Задачи", icon: CheckSquare },
+  { href: "/people", label: "Люди", icon: Users }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState(true);
   const currentLabel = useMemo(() => {
     const hit = [...mainNav, ...secondaryNav].find((item) => item.href === pathname || (item.href !== "/" && pathname.startsWith(item.href)));
-    return hit?.label ?? "Workspace";
+    return hit?.label ?? "Рабочее пространство";
   }, [pathname]);
 
   useEffect(() => {
@@ -57,7 +57,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const tag = (event.target as HTMLElement)?.tagName;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setPaletteOpen(true); }
       if (event.key === "/" && !["INPUT", "TEXTAREA"].includes(tag)) { event.preventDefault(); setPaletteOpen(true); }
-      if (event.key.toLowerCase() === "c" && !["INPUT", "TEXTAREA"].includes(tag)) setQuickOpen(true);
+      const target = event.target as HTMLElement | null;
+      if (event.key.toLowerCase() === "c" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && !["INPUT", "TEXTAREA", "SELECT"].includes(tag) && !target?.isContentEditable) setQuickOpen(true);
     };
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("keydown", onKey);
@@ -94,13 +95,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {!sidebarCollapsed && <Link href="/knowledge" className="mb-3 block rounded-2xl bg-[linear-gradient(145deg,#8934f9,#4c04a5)] p-4 text-white shadow-[0_12px_24px_rgba(76,4,165,0.18)] transition hover:-translate-y-0.5">
-          <div className="flex items-center gap-2 text-[11px] font-semibold"><BookIcon /><span>Workspace memory</span></div>
-          <p className="mt-3 text-xs leading-5 text-white/70">Keep every decision, event and next step connected.</p>
-          <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1.5 text-[11px] font-medium">Explore Knowledge <ChevronRight size={13} /></span>
+          <div className="flex items-center gap-2 text-[11px] font-semibold"><BookIcon /><span>Память рабочего пространства</span></div>
+          <p className="mt-3 text-xs leading-5 text-white/70">Связывай решения, события и следующие шаги.</p>
+          <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1.5 text-[11px] font-medium">Открыть память <ChevronRight size={13} /></span>
         </Link>}
         <div className={`${sidebarCollapsed ? "items-center" : ""} flex flex-col gap-1 border-t border-[#eeeaf4] pt-3`}>
-          <button onClick={() => setPaletteOpen(true)} className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-left text-sm text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink ${sidebarCollapsed ? "justify-center" : ""}`} title="Help & shortcuts"><CircleHelp size={17} />{!sidebarCollapsed && "Help & shortcuts"}</button>
-          <button onClick={logout} className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-left text-sm text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink ${sidebarCollapsed ? "justify-center" : ""}`} title="Sign out"><LogOut size={17} />{!sidebarCollapsed && "Sign out"}</button>
+          <button onClick={() => setPaletteOpen(true)} className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-left text-sm text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink ${sidebarCollapsed ? "justify-center" : ""}`} title="Помощь и сочетания клавиш"><CircleHelp size={17} />{!sidebarCollapsed && "Помощь и сочетания"}</button>
+          <button onClick={logout} className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-left text-sm text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink ${sidebarCollapsed ? "justify-center" : ""}`} title="Выйти"><LogOut size={17} />{!sidebarCollapsed && "Выйти"}</button>
         </div>
       </div>
     </aside>
@@ -108,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     {mobileOpen && <div className="fixed inset-0 z-40 bg-[#21102d]/20 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)}>
       <div className="h-full w-[292px] bg-white p-4 shadow-popover" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between"><Link href="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}><BrandMark /><span className="text-[13px] font-semibold">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span></Link><IconButton label="Close menu" onClick={() => setMobileOpen(false)}><X size={18} /></IconButton></div>
-        <div className="mt-8 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2]">Workspace</div>
+        <div className="mt-8 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2]">Рабочее пространство</div>
         <nav className="mt-2 space-y-1">{[...mainNav, ...secondaryNav].map((item) => <NavItem key={item.href} {...item} collapsed={false} active={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)} onClick={() => setMobileOpen(false)} />)}</nav>
       </div>
     </div>}
@@ -120,24 +121,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="hidden shrink-0 text-sm font-semibold text-bcc-ink sm:block lg:hidden">{currentLabel}</div>
             <button onClick={() => setPaletteOpen(true)} className="command-search w-full max-w-[390px]">
-              <Search size={16} className="shrink-0 text-[#8e8a9d]" /><span className="hidden truncate sm:inline">Search or type a command...</span><span className="truncate sm:hidden">Search workspace</span><kbd className="ml-auto hidden rounded-md bg-[#f5f1fb] px-1.5 py-0.5 text-[10px] text-[#8e8a9d] sm:inline">⌘ K</kbd>
+              <Search size={16} className="shrink-0 text-[#8e8a9d]" /><span className="hidden truncate sm:inline">Найти запись или действие…</span><span className="truncate sm:hidden">Поиск по рабочему пространству</span><kbd className="ml-auto hidden rounded-md bg-[#f5f1fb] px-1.5 py-0.5 text-[10px] text-[#8e8a9d] sm:inline">⌘ K</kbd>
             </button>
           </div>
           <div className="hidden items-center gap-2 md:flex">
-            <button className="relative flex h-10 w-10 items-center justify-center rounded-xl text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink" aria-label="Notifications"><Bell size={18} /><span className="notification-dot absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff4b5c]" /></button>
+            <button className="relative flex h-10 w-10 items-center justify-center rounded-xl text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink" aria-label="Уведомления" title="Уведомления"><Bell size={18} /><span className="notification-dot absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff4b5c]" /></button>
             <div className="mx-1 h-7 w-px bg-[#eeeaf4]" />
-            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-bcc-soft" aria-label="Open profile menu"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eadcff] text-xs font-semibold text-bcc-deep">DW</span><span className="hidden lg:block"><span className="block text-xs font-semibold leading-4 text-bcc-ink">DevRel workspace</span><span className="block text-[10px] leading-4 text-[#92909a]">Workspace owner</span></span><ChevronDown size={14} className="text-[#92909a]" /></button>
+            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-bcc-soft" aria-label="Открыть профиль"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eadcff] text-xs font-semibold text-bcc-deep">DW</span><span className="hidden lg:block"><span className="block text-xs font-semibold leading-4 text-bcc-ink">DevRel workspace</span><span className="block text-[10px] leading-4 text-[#92909a]">Владелец пространства</span></span><ChevronDown size={14} className="text-[#92909a]" /></button>
           </div>
-          <button onClick={() => setQuickOpen(true)} className="button-brand hidden min-h-10 px-3.5 text-sm sm:inline-flex sm:px-4"><Plus size={16} /><span>Quick Add</span></button>
+          <button onClick={() => setQuickOpen(true)} className="button-brand hidden min-h-10 px-3.5 text-sm sm:inline-flex sm:px-4"><Plus size={16} /><span>Быстро добавить</span></button>
         </div>
-        {!online && <div className="bg-[#FFF6DD] px-4 py-1.5 text-center text-xs font-medium text-[#876000]">Offline mode · new records will sync when the connection returns</div>}
+        {!online && <div className="bg-[#FFF6DD] px-4 py-1.5 text-center text-xs font-medium text-[#876000]" role="status">Нет сети — проверь подключение перед сохранением изменений.</div>}
       </header>
       <main className="page-wrap">{children}</main>
     </div>
 
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#ebe8f3] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
-      <button onClick={() => setQuickOpen(true)} className="button-brand absolute left-1/2 top-[-22px] flex h-12 w-12 -translate-x-1/2 rounded-full p-0 shadow-[0_10px_22px_rgba(137,52,249,0.32)]" aria-label="Quick add"><Plus size={21} /></button>
-      <div className="mx-auto flex max-w-md items-center justify-around">{mobileNav.map((item) => <Link key={item.href} href={item.href} className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}</div>
+      <button onClick={() => setQuickOpen(true)} className="button-brand absolute left-1/2 top-[-22px] flex h-12 w-12 -translate-x-1/2 rounded-full p-0 shadow-[0_10px_22px_rgba(137,52,249,0.32)]" aria-label="Быстро добавить" title="Быстро добавить"><Plus size={21} /></button>
+      <div className="mx-auto flex max-w-md items-center justify-around">{mobileNav.map((item) => <Link key={item.href} href={item.href} className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}<button onClick={() => setMobileOpen(true)} className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${mobileOpen ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`} aria-label="Открыть ещё разделы"><MoreHorizontal size={18} strokeWidth={1.8} /><span>Ещё</span></button></div>
     </nav>
 
     <QuickAdd open={quickOpen} onClose={() => setQuickOpen(false)} initialModule={quickModule} />

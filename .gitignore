@@ -12,3 +12,5 @@ coverage
 *.tsbuildinfo
 .next-stale-*
 qa-artifacts/
+test-results/
+playwright-report/
