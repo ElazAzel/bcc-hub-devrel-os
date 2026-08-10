@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+dist
+.vercel
+.env
+.env.local
+.env.*.local
+!.env.example
+coverage
+*.log
+*.tsbuildinfo
+.next-stale-*
+qa-artifacts/

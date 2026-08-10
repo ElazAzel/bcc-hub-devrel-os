@@ -1,0 +1,156 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Database, FileText, FolderKanban, Home, LogOut, Menu, MoreHorizontal, Newspaper, Plus, Radar, Search, Settings, Users, X, Zap } from "lucide-react";
+import { signOut } from "@/lib/data";
+import { type ModuleKey } from "@/lib/types";
+import { CommandPalette } from "./command-palette";
+import { IconButton } from "./ui";
+import { QuickAdd } from "./quick-add";
+
+const mainNav: Array<{ href: string; label: string; icon: typeof Home; module?: ModuleKey }> = [
+  { href: "/", label: "Overview", icon: Home },
+  { href: "/projects", label: "Projects", icon: FolderKanban, module: "projects" },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare, module: "tasks" },
+  { href: "/people", label: "People", icon: Users, module: "people" },
+  { href: "/events", label: "Events", icon: CalendarDays, module: "events" },
+  { href: "/content", label: "Content", icon: Newspaper, module: "content" },
+  { href: "/ambassadors", label: "Ambassadors", icon: Zap, module: "ambassadors" },
+  { href: "/communities", label: "Communities", icon: Users, module: "communities" },
+  { href: "/tech-radar", label: "Tech Radar", icon: Radar, module: "tech-radar" },
+  { href: "/knowledge", label: "Knowledge", icon: Database, module: "knowledge" }
+];
+
+const secondaryNav = [
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/settings", label: "Settings", icon: Settings }
+];
+
+const mobileNav = [
+  { href: "/", label: "Home", icon: Home },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/people", label: "People", icon: Users },
+  { href: "/more", label: "More", icon: MoreHorizontal }
+];
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickModule, setQuickModule] = useState<ModuleKey | undefined>();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [online, setOnline] = useState(true);
+  const currentLabel = useMemo(() => {
+    const hit = [...mainNav, ...secondaryNav].find((item) => item.href === pathname || (item.href !== "/" && pathname.startsWith(item.href)));
+    return hit?.label ?? "Workspace";
+  }, [pathname]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const tag = (event.target as HTMLElement)?.tagName;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setPaletteOpen(true); }
+      if (event.key === "/" && !["INPUT", "TEXTAREA"].includes(tag)) { event.preventDefault(); setPaletteOpen(true); }
+      if (event.key.toLowerCase() === "c" && !["INPUT", "TEXTAREA"].includes(tag)) setQuickOpen(true);
+    };
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    setOnline(navigator.onLine);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  async function logout() { await signOut(); router.push("/login"); }
+
+  return <div className="app-shell min-h-screen pb-20 lg:pb-0">
+    <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-[#ebe8f3] bg-white transition-all duration-300 lg:block ${sidebarCollapsed ? "w-[78px]" : "w-[256px]"}`}>
+      <div className="flex h-full flex-col px-3 py-4">
+        <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between px-2"}`}>
+          <Link href="/" className="flex items-center gap-2.5" aria-label="BCC HUB DevRel OS">
+            <BrandMark />
+            {!sidebarCollapsed && <span className="text-[13px] font-semibold tracking-[-0.02em] text-bcc-ink">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span>}
+          </Link>
+          {!sidebarCollapsed && <IconButton label="Collapse navigation" onClick={() => setSidebarCollapsed(true)}><ChevronLeft size={17} /></IconButton>}
+        </div>
+        {sidebarCollapsed && <IconButton label="Expand navigation" className="mx-auto mt-3" onClick={() => setSidebarCollapsed(false)}><ChevronRight size={17} /></IconButton>}
+
+        <div className={`mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2] ${sidebarCollapsed ? "sr-only" : ""}`}>Workspace</div>
+        <nav className="scrollbar-thin mt-2 flex-1 space-y-1 overflow-y-auto">
+          {mainNav.map((item) => <NavItem key={item.href} {...item} collapsed={sidebarCollapsed} active={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)} />)}
+          <div className="my-4 border-t border-[#eeeaf4]" />
+          {secondaryNav.map((item) => <NavItem key={item.href} {...item} collapsed={sidebarCollapsed} active={pathname.startsWith(item.href)} />)}
+        </nav>
+
+        {!sidebarCollapsed && <Link href="/knowledge" className="mb-3 block rounded-2xl bg-[linear-gradient(145deg,#8934f9,#4c04a5)] p-4 text-white shadow-[0_12px_24px_rgba(76,4,165,0.18)] transition hover:-translate-y-0.5">
+          <div className="flex items-center gap-2 text-[11px] font-semibold"><BookIcon /><span>Workspace memory</span></div>
+          <p className="mt-3 text-xs leading-5 text-white/70">Keep every decision, event and next step connected.</p>
+          <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1.5 text-[11px] font-medium">Explore Knowledge <ChevronRight size={13} /></span>
+        </Link>}
+        <div className={`${sidebarCollapsed ? "items-center" : ""} flex flex-col gap-1 border-t border-[#eeeaf4] pt-3`}>
+          <button onClick={() => setPaletteOpen(true)} className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-left text-sm text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink ${sidebarCollapsed ? "justify-center" : ""}`} title="Help & shortcuts"><CircleHelp size={17} />{!sidebarCollapsed && "Help & shortcuts"}</button>
+          <button onClick={logout} className={`flex min-h-10 items-center gap-3 rounded-xl px-3 text-left text-sm text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink ${sidebarCollapsed ? "justify-center" : ""}`} title="Sign out"><LogOut size={17} />{!sidebarCollapsed && "Sign out"}</button>
+        </div>
+      </div>
+    </aside>
+
+    {mobileOpen && <div className="fixed inset-0 z-40 bg-[#21102d]/20 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)}>
+      <div className="h-full w-[292px] bg-white p-4 shadow-popover" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between"><Link href="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}><BrandMark /><span className="text-[13px] font-semibold">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span></Link><IconButton label="Close menu" onClick={() => setMobileOpen(false)}><X size={18} /></IconButton></div>
+        <div className="mt-8 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2]">Workspace</div>
+        <nav className="mt-2 space-y-1">{[...mainNav, ...secondaryNav].map((item) => <NavItem key={item.href} {...item} collapsed={false} active={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)} onClick={() => setMobileOpen(false)} />)}</nav>
+      </div>
+    </div>}
+
+    <div className={`transition-all duration-300 ${sidebarCollapsed ? "lg:pl-[78px]" : "lg:pl-[256px]"}`}>
+      <header className="app-header sticky top-0 z-30">
+        <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+          <IconButton label="Open menu" className="lg:hidden" onClick={() => setMobileOpen(true)}><Menu size={19} /></IconButton>
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="hidden shrink-0 text-sm font-semibold text-bcc-ink sm:block lg:hidden">{currentLabel}</div>
+            <button onClick={() => setPaletteOpen(true)} className="command-search w-full max-w-[390px]">
+              <Search size={16} className="shrink-0 text-[#8e8a9d]" /><span className="hidden truncate sm:inline">Search or type a command...</span><span className="truncate sm:hidden">Search workspace</span><kbd className="ml-auto hidden rounded-md bg-[#f5f1fb] px-1.5 py-0.5 text-[10px] text-[#8e8a9d] sm:inline">⌘ K</kbd>
+            </button>
+          </div>
+          <div className="hidden items-center gap-2 md:flex">
+            <button className="relative flex h-10 w-10 items-center justify-center rounded-xl text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink" aria-label="Notifications"><Bell size={18} /><span className="notification-dot absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff4b5c]" /></button>
+            <div className="mx-1 h-7 w-px bg-[#eeeaf4]" />
+            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-bcc-soft" aria-label="Open profile menu"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eadcff] text-xs font-semibold text-bcc-deep">DW</span><span className="hidden lg:block"><span className="block text-xs font-semibold leading-4 text-bcc-ink">DevRel workspace</span><span className="block text-[10px] leading-4 text-[#92909a]">Workspace owner</span></span><ChevronDown size={14} className="text-[#92909a]" /></button>
+          </div>
+          <button onClick={() => setQuickOpen(true)} className="button-brand hidden min-h-10 px-3.5 text-sm sm:inline-flex sm:px-4"><Plus size={16} /><span>Quick Add</span></button>
+        </div>
+        {!online && <div className="bg-[#FFF6DD] px-4 py-1.5 text-center text-xs font-medium text-[#876000]">Offline mode · new records will sync when the connection returns</div>}
+      </header>
+      <main className="page-wrap">{children}</main>
+    </div>
+
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#ebe8f3] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
+      <button onClick={() => setQuickOpen(true)} className="button-brand absolute left-1/2 top-[-22px] flex h-12 w-12 -translate-x-1/2 rounded-full p-0 shadow-[0_10px_22px_rgba(137,52,249,0.32)]" aria-label="Quick add"><Plus size={21} /></button>
+      <div className="mx-auto flex max-w-md items-center justify-around">{mobileNav.map((item) => <Link key={item.href} href={item.href} className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}</div>
+    </nav>
+
+    <QuickAdd open={quickOpen} onClose={() => setQuickOpen(false)} initialModule={quickModule} />
+    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onCreate={(module) => { setPaletteOpen(false); setQuickModule(module); setQuickOpen(true); }} />
+  </div>;
+}
+
+function BrandMark() {
+  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-[0_7px_16px_rgba(137,52,249,0.2)]"><img src="/icons/icon.svg" alt="" className="h-9 w-9 rounded-xl" /></span>;
+}
+
+function BookIcon() { return <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15"><Database size={13} /></span>; }
+
+function NavItem({ href, label, icon: Icon, collapsed, active, onClick }: { href: string; label: string; icon: typeof Home; collapsed: boolean; active: boolean; onClick?: () => void }) {
+  return <Link href={href} onClick={onClick} title={collapsed ? label : undefined} className={`group relative flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition duration-200 ${collapsed ? "justify-center" : ""} ${active ? "bg-[#f1e7ff] font-semibold text-bcc-deep" : "text-[#74747C] hover:bg-[#f8f5fc] hover:text-bcc-ink"}`}><span className={`absolute left-0 h-5 w-0.5 rounded-full bg-bcc-violet transition ${active ? "opacity-100" : "opacity-0"}`} /><Icon size={17} strokeWidth={active ? 2 : 1.8} />{!collapsed && <span>{label}</span>}</Link>;
+}
