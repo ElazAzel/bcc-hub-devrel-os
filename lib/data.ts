@@ -30,6 +30,36 @@ function writeLocal(module: ModuleKey, rows: AnyRecord[]) {
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 const MAX_SEARCH_LENGTH = 120;
+const COMMON_COLUMNS = ["id", "owner_id", "created_at", "updated_at", "archived_at"];
+
+// PostgREST validates every selected column against the concrete table. Keep
+// the list derived from the module schema instead of sending a shared union of
+// columns to every table (which turns a valid authenticated request into 400).
+const MODULE_QUERY_EXTRAS: Partial<Record<ModuleKey, string[]>> = {
+  projects: ["health_score", "health_state", "last_activity_at", "project_type", "goal", "expected_result", "actual_result"],
+  tasks: ["project_id", "parent_task_id", "source_date", "requested_by_contact_id", "expected_result", "blocker", "actual_result", "retrospective", "completed_at"],
+  people: ["name", "phone", "relationship_score", "relationship_state", "last_interaction_at"],
+  organizations: ["notes"],
+  interactions: ["project_id", "event_id", "what_i_said", "what_they_said", "follow_up_date"],
+  commitments: ["contact_id", "project_id", "interaction_id"],
+  events: ["project_id", "format", "capacity", "registrations", "confirmed", "attended", "nps", "budget_planned", "budget_actual"],
+  content: ["author_contact_id", "ambassador_id", "project_id", "event_id", "community_id", "published_at", "views", "reach", "likes", "comments", "shares"],
+  communities: ["owner_contact_id", "last_activity_at"],
+  ambassadors: ["contact_id", "start_date", "training_progress", "last_contribution_at"],
+  "tech-radar": ["slug", "domain", "rationale", "owner_contact_id"],
+  documents: ["storage_path", "project_id", "task_id", "event_id", "contact_id", "ambassador_id", "version", "last_updated_at"],
+  decisions: ["date", "problem", "options", "consequences", "review_date", "project_id", "task_id"],
+  knowledge: ["trigger", "people", "actions", "communication", "decision", "tags", "project_id", "task_id", "event_id"]
+};
+
+function queryColumns(module: ModuleKey, config: NonNullable<ReturnType<typeof getModule>>): string[] {
+  return Array.from(new Set([
+    ...COMMON_COLUMNS,
+    ...config.searchFields,
+    ...config.fields.map((field) => field.key),
+    ...(MODULE_QUERY_EXTRAS[module] ?? [])
+  ]));
+}
 
 function safePage(query: RecordListQuery = {}) {
   const page = Math.max(1, Math.floor(query.page ?? 1));
@@ -104,7 +134,7 @@ export async function listRecords(module: ModuleKey, query: RecordListQuery = {}
     const start = (page - 1) * pageSize;
     return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, hasMore: start + pageSize < rows.length };
   }
-  const allowedColumns = new Set(["id", "owner_id", "created_at", "updated_at", "archived_at", "title", "name", "first_name", "last_name", "description", "status", "priority", "direction", "due_date", "date_start", "planned_date", "next_follow_up_at", "date", "project_id", "health_score", "health_state", "last_activity_at", "registration_target", "registrations", "last_interaction_at", "relationship_state", "ring", "change_state", "last_reviewed_at", "total_xp", "current_quarter_xp", "track", "level", "next_action", ...config.searchFields, ...config.fields.map((field) => field.key)]);
+  const allowedColumns = new Set(queryColumns(module, config));
   const selectColumns = Array.from(allowedColumns).join(",");
   const sortField = allowedColumns.has(query.sort?.field ?? "") ? query.sort!.field : "updated_at";
   let request = supabase.from(config.table).select(selectColumns, { count: "exact" }).is("archived_at", null).order(sortField, { ascending: query.sort?.direction === "asc" });
