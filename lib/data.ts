@@ -29,6 +29,7 @@ function writeLocal(module: ModuleKey, rows: AnyRecord[]) {
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+const MAX_SEARCH_LENGTH = 120;
 
 function safePage(query: RecordListQuery = {}) {
   const page = Math.max(1, Math.floor(query.page ?? 1));
@@ -109,7 +110,7 @@ export async function listRecords(module: ModuleKey, query: RecordListQuery = {}
   let request = supabase.from(config.table).select(selectColumns, { count: "exact" }).is("archived_at", null).order(sortField, { ascending: query.sort?.direction === "asc" });
   if (query.statuses?.length && config.fields.some((field) => field.key === "status")) request = request.in("status", query.statuses);
   if (query.q?.trim()) {
-    const needle = query.q.trim().replace(/[%,()]/g, " ").replace(/\s+/g, " ");
+    const needle = query.q.trim().slice(0, MAX_SEARCH_LENGTH).replace(/[%,()*\\.:]/g, " ").replace(/\s+/g, " ");
     const clauses = config.searchFields.map((field) => `${field}.ilike.%${needle}%`).join(",");
     if (clauses) request = request.or(clauses);
   }
@@ -274,16 +275,9 @@ export async function addAmbassadorContribution(ambassadorId: string, input: { t
       p_status: contribution.status,
       p_review_note: contribution.review_note ?? null
     });
-    if (!atomicError) {
-      await logActivity("XP added", "ambassadors", ambassadorId, `${input.final_xp} XP добавлено через атомарный ledger`);
-      return;
-    }
-    const { error } = await supabase.from("ambassador_contributions").insert(contribution);
-    if (error) throw toDataError(error);
-    const { data: ledger } = await supabase.from("ambassador_contributions").select("final_xp").eq("ambassador_id", ambassadorId).eq("status", "Approved");
-    const total = (ledger ?? []).reduce((sum, row) => sum + Number(row.final_xp ?? 0), 0);
-    const { error: updateError } = await supabase.from("ambassadors").update({ total_xp: total, last_contribution_at: contribution.date, updated_at: contribution.updated_at }).eq("id", ambassadorId);
-    if (updateError) throw toDataError(updateError);
+    if (atomicError) throw toDataError(atomicError);
+    await logActivity("XP added", "ambassadors", ambassadorId, `${input.final_xp} XP добавлено через атомарный ledger`);
+    return;
   }
   await logActivity("XP added", "ambassadors", ambassadorId, `${input.final_xp} XP добавлено через contribution ledger`);
 }
@@ -297,16 +291,20 @@ function resultTitle(row: AnyRecord): string {
   return displayName(row);
 }
 
-export async function searchAll(query: string, limit = 40): Promise<WorkspaceSearchResult[]> {
-  const normalized = query.trim();
+export async function searchAll(query: string, limit = 40, signal?: AbortSignal): Promise<WorkspaceSearchResult[]> {
+  const normalized = query.trim().slice(0, MAX_SEARCH_LENGTH);
   if (!normalized) return [];
+  if (signal?.aborted) throw new DOMException("Поиск отменён", "AbortError");
   if (supabase) {
-    const { data, error } = await supabase.rpc("workspace_search", { search_text: normalized, result_limit: limit });
+    const request = supabase.rpc("workspace_search", { search_text: normalized, result_limit: limit });
+    const { data, error } = await (signal ? request.abortSignal(signal) : request);
     if (!error && data) return data as WorkspaceSearchResult[];
   }
+  if (signal?.aborted) throw new DOMException("Поиск отменён", "AbortError");
   const modules = Object.keys(SEED_DATA) as ModuleKey[];
   const perModule = Math.max(3, Math.ceil(limit / modules.length));
   const pages = await Promise.all(modules.map(async (module) => ({ module, rows: await loadRecords(module, { q: normalized, pageSize: perModule }) })));
+  if (signal?.aborted) throw new DOMException("Поиск отменён", "AbortError");
   return pages.flatMap(({ module, rows }) => rows.flatMap((row) => {
     const rank = rankSearchRecord(row, getModule(module)?.searchFields ?? [], normalized);
     return rank > 0 ? [{ module, id: String(row.id), title: resultTitle(row), subtitle: String(row.description ?? row.position ?? row.category ?? ""), rank }] : [];
@@ -314,7 +312,13 @@ export async function searchAll(query: string, limit = 40): Promise<WorkspaceSea
 }
 
 export async function findPotentialDuplicates(module: ModuleKey, input: Record<string, string>, limit = 5): Promise<AnyRecord[]> {
-  const rows = await loadRecords(module, { pageSize: MAX_PAGE_SIZE });
+  const lookupValues = module === "people"
+    ? [input.email, input.phone, [input.first_name, input.last_name].filter(Boolean).join(" "), input.organization_name]
+    : [input.title ?? input.name];
+  const uniqueLookups = [...new Set(lookupValues.map((value) => value?.trim()).filter((value): value is string => Boolean(value && value.length >= 2)))].slice(0, 4);
+  const rows = uniqueLookups.length
+    ? (await Promise.all(uniqueLookups.map((value) => listRecords(module, { q: value, pageSize: 25 })))).flatMap((page) => page.items).filter((row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index)
+    : await loadRecords(module, { pageSize: MAX_PAGE_SIZE });
   return findDuplicateCandidates(module, rows, input, limit);
 }
 

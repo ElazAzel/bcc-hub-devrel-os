@@ -106,7 +106,7 @@ export const MODULES: Record<ModuleKey, ModuleConfig> = {
     key: "people", table: "contacts", label: "People", singular: "Contact",
     description: "Рабочий контекст людей, взаимодействия и follow-up.",
     emptyTitle: "Контактов пока нет", emptyDescription: "Сохраняй важные рабочие связи и историю общения.",
-    searchFields: ["first_name", "last_name", "position", "email", "organization_name", "notes"],
+    searchFields: ["first_name", "last_name", "position", "email", "phone", "organization_name", "notes"],
     fields: [
       { key: "first_name", label: "Имя", required: true, placeholder: "Demo" },
       { key: "last_name", label: "Фамилия", placeholder: "Speaker" },
