@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeTelegramHtml, isUuid, parseTelegramCommand, truncateTelegramHtml, truncateTelegramText } from "./telegram";
+import { escapeTelegramHtml, isUuid, parseTelegramCommand, TELEGRAM_COMMANDS, truncateTelegramHtml, truncateTelegramText } from "./telegram";
 
 describe("Telegram commands", () => {
   it("parses bot usernames and arguments", () => {
@@ -23,5 +23,10 @@ describe("Telegram commands", () => {
   it("does not leave broken HTML tags when a formatted reply is truncated", () => {
     expect(truncateTelegramHtml(`<b>${"x".repeat(4000)}</b>`)).not.toContain("<b>");
     expect(truncateTelegramHtml(`<b>${"x".repeat(4000)}</b>`)).toHaveLength(3800);
+  });
+
+  it("keeps the command menu descriptions in Cyrillic", () => {
+    expect(TELEGRAM_COMMANDS).toHaveLength(7);
+    expect(TELEGRAM_COMMANDS.every((item) => item.description && !item.description.includes("?"))).toBe(true);
   });
 });

@@ -3,6 +3,16 @@ export type TelegramCommand = {
   argument: string;
 };
 
+export const TELEGRAM_COMMANDS = [
+  { command: "start", description: "Подключить рабочее пространство" },
+  { command: "task", description: "Создать задачу" },
+  { command: "note", description: "Сохранить заметку" },
+  { command: "tasks", description: "Показать активные задачи" },
+  { command: "today", description: "Показать фокус на сегодня" },
+  { command: "done", description: "Закрыть задачу по ID" },
+  { command: "help", description: "Показать все команды" }
+] as const;
+
 export function parseTelegramCommand(text: string): TelegramCommand | null {
   const value = text.trim();
   if (!value.startsWith("/")) return null;

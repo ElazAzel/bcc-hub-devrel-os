@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { hashTelegramLinkCode } from "../_server";
+import { TELEGRAM_COMMANDS } from "@/lib/telegram";
+import { hashTelegramLinkCode, telegramApi } from "../_server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,5 +19,10 @@ export async function POST() {
   if (revokeError) return NextResponse.json({ error: "Не удалось подготовить подключение. Примени миграцию Telegram и повтори попытку." }, { status: 503 });
   const { error } = await supabase.from("telegram_link_codes").insert({ owner_id: user.id, code_hash: hashTelegramLinkCode(code), expires_at: expiresAt });
   if (error) return NextResponse.json({ error: "Не удалось создать код подключения. Примени миграцию Telegram и повтори попытку." }, { status: 503 });
+  try {
+    await telegramApi("setMyCommands", { commands: TELEGRAM_COMMANDS });
+  } catch (telegramError) {
+    console.error("Telegram command menu update failed", telegramError instanceof Error ? telegramError.message : "unknown error");
+  }
   return NextResponse.json({ code, expiresAt, botUsername: "DevRelAssistbot" }, { headers: { "Cache-Control": "no-store" } });
 }
