@@ -53,7 +53,11 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
     event.preventDefault();
     if (!module || !config) return;
     const missing = config.fields.find((field) => field.required && !values[field.key]?.trim());
-    if (missing) { setError(`Заполни поле «${fieldLabel(missing)}».`); return; }
+    if (missing) {
+      setError(`Заполни поле «${fieldLabel(missing)}».`);
+      window.requestAnimationFrame(() => document.getElementById(`quick-${missing.key}`)?.focus());
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -80,5 +84,7 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
 
 function QuickField({ field, value, onChange }: { field: FieldConfig; value: string; onChange: (value: string) => void }) {
   const label = fieldLabel(field);
-  return <Field label={label}>{field.type === "textarea" ? <Textarea required={field.required} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder} /> : field.type === "select" ? <Select required={field.required} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input required={field.required} type={field.type === "date" ? "date" : field.type === "number" ? "number" : field.type === "url" ? "url" : "text"} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
+  const id = `quick-${field.key}`;
+  const common = { id, name: field.key, required: field.required };
+  return <Field label={label}>{field.type === "textarea" ? <Textarea {...common} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} /> : field.type === "select" ? <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input {...common} type={field.type === "date" ? "date" : field.type === "number" ? "number" : field.type === "url" ? "url" : field.key === "email" ? "email" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} spellCheck={field.key === "email" || field.type === "url" ? false : undefined} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
 }

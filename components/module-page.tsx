@@ -9,10 +9,10 @@ import { listRecords, updateRecord } from "@/lib/data";
 import { fieldLabel, formatDateRu, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { groupTasksByStatus } from "@/lib/task-board";
 import { displayName, getModule, type AnyRecord, type ModuleKey } from "@/lib/types";
+import { requestQuickAdd } from "@/lib/ui-events";
 import { PageHeader } from "./page-header";
 import { StatusChip } from "./status-chip";
 import { Button, EmptyState, ErrorState, Field, LoadingState, Modal, Select } from "./ui";
-import { QuickAdd } from "./quick-add";
 
 type ViewMode = "list" | "board" | "radar" | "changelog";
 
@@ -25,7 +25,6 @@ export function ModulePage({ module }: { module: ModuleKey }) {
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   const [status, setStatus] = useState(searchParams.get("status") ?? "");
   const [view, setView] = useState<ViewMode>((searchParams.get("view") as ViewMode) || (module === "tasks" ? "board" : module === "tech-radar" ? "radar" : "list"));
-  const [quickOpen, setQuickOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const query = searchParams.get("q") ?? "";
@@ -50,9 +49,8 @@ export function ModulePage({ module }: { module: ModuleKey }) {
     <PageHeader eyebrow="Рабочее пространство" title={moduleCopy(module).label} description={moduleCopy(module).description} onSearch={changeSearch} searchValue={searchInput} />
     {module === "ambassadors" && <AmbassadorSnapshot rows={rows} />}
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="chip">{result.data.total} записей</span>{status && <button className="chip chip-active" onClick={() => { setStatus(""); updateUrl({ status: undefined, page: 1 }); }}>{ru(status)} ×</button>}</div><div className="flex items-center gap-1 rounded-full border border-bcc-border p-1">{viewOptions.map((option) => <IconTab key={option} active={view === option} label={option === "list" ? "Список" : option === "board" ? "Доска" : option === "radar" ? "Техрадар" : "Изменения"} onClick={() => changeView(option)}>{option === "list" ? <List size={16} /> : option === "board" ? <Grid2X2 size={16} /> : option === "radar" ? <RadarIcon size={16} /> : <span className="text-[10px] font-semibold">Δ</span>}</IconTab>)}<IconTab active={filtersOpen} label="Фильтры" onClick={() => setFiltersOpen(true)}><SlidersHorizontal size={16} /></IconTab></div></div>
-    {rows.length === 0 ? <EmptyState title={query ? "Ничего не найдено" : config.emptyTitle.replace(/^[A-Z].*$/, moduleCopy(module).label + " пока нет")} description={query ? "Измени запрос или создай новую запись." : config.emptyDescription} action={<Button variant="brand" onClick={() => setQuickOpen(true)}><Plus size={16} />Создать {moduleCopy(module).singular}</Button>} /> : view === "board" ? <TaskBoard rows={rows} /> : view === "radar" ? <RadarOverview rows={rows} /> : view === "changelog" ? <RadarChangelog rows={rows} /> : <RecordTable rows={rows} module={module} />}
+    {rows.length === 0 ? <EmptyState title={query ? "Ничего не найдено" : config.emptyTitle.replace(/^[A-Z].*$/, moduleCopy(module).label + " пока нет")} description={query ? "Измени запрос или создай новую запись." : config.emptyDescription} action={<Button variant="brand" onClick={() => requestQuickAdd(module)}><Plus size={16} />Создать {moduleCopy(module).singular}</Button>} /> : view === "board" ? <TaskBoard rows={rows} /> : view === "radar" ? <RadarOverview rows={rows} /> : view === "changelog" ? <RadarChangelog rows={rows} /> : <RecordTable rows={rows} module={module} />}
     {result.data.total > result.data.pageSize && <Pagination page={result.data.page} hasMore={result.data.hasMore} onChange={(next) => updateUrl({ page: next })} />}
-    <QuickAdd open={quickOpen} onClose={() => setQuickOpen(false)} initialModule={module} />
     <AdvancedFilters open={filtersOpen} onClose={() => setFiltersOpen(false)} module={module} value={status} onApply={(next) => { setStatus(next); updateUrl({ status: next || undefined, page: 1 }); }} />
   </div>;
 }

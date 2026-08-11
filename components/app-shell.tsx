@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Database, FileText, FolderKanban, Home, LogOut, Menu, MoreHorizontal, Newspaper, Plus, Radar, Search, Settings, Users, X, Zap } from "lucide-react";
+import { Dialog } from "radix-ui";
 import { signOut } from "@/lib/data";
 import { moduleCopy } from "@/lib/i18n";
 import { type ModuleKey } from "@/lib/types";
+import { requestQuickAdd } from "@/lib/ui-events";
 import { CommandPalette } from "./command-palette";
 import { IconButton } from "./ui";
 import { QuickAdd } from "./quick-add";
@@ -59,35 +61,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const target = event.target as HTMLElement | null;
       if (event.key.toLowerCase() === "c" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat && !["INPUT", "TEXTAREA", "SELECT"].includes(tag) && !target?.isContentEditable) setQuickOpen(true);
     };
+    const onQuickAdd = (event: Event) => {
+      setQuickModule((event as CustomEvent<ModuleKey | undefined>).detail);
+      setQuickOpen(true);
+    };
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("bcc:quick-add", onQuickAdd);
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
     setOnline(navigator.onLine);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js?v=2").catch(() => undefined);
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("bcc:quick-add", onQuickAdd);
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
     };
   }, []);
 
+  useEffect(() => { setMobileOpen(false); setPaletteOpen(false); }, [pathname]);
+
   async function logout() { await signOut(); router.push("/login"); }
 
   return <div className="app-shell min-h-screen pb-24 lg:pb-0">
-    <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-[#ebe8f3] bg-white transition-all duration-300 lg:block ${sidebarCollapsed ? "w-[78px]" : "w-[256px]"}`}>
+    <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-bcc-ink focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white">Перейти к содержимому</a>
+    <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-[#ebe8f3] bg-white transition-[width] duration-300 lg:block ${sidebarCollapsed ? "w-[78px]" : "w-[256px]"}`}>
       <div className="flex h-full flex-col px-3 py-4">
         <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between px-2"}`}>
           <Link href="/" className="flex items-center gap-2.5" aria-label="BCC HUB DevRel OS">
             <BrandMark />
-            {!sidebarCollapsed && <span className="text-[13px] font-semibold tracking-[-0.02em] text-bcc-ink">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span>}
+            {!sidebarCollapsed && <span className="text-[13px] font-semibold tracking-[-0.02em] text-bcc-ink" translate="no">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span>}
           </Link>
-          {!sidebarCollapsed && <IconButton label="Collapse navigation" onClick={() => setSidebarCollapsed(true)}><ChevronLeft size={17} /></IconButton>}
+          {!sidebarCollapsed && <IconButton label="Свернуть навигацию" onClick={() => setSidebarCollapsed(true)}><ChevronLeft size={17} /></IconButton>}
         </div>
-        {sidebarCollapsed && <IconButton label="Expand navigation" className="mx-auto mt-3" onClick={() => setSidebarCollapsed(false)}><ChevronRight size={17} /></IconButton>}
+        {sidebarCollapsed && <IconButton label="Развернуть навигацию" className="mx-auto mt-3" onClick={() => setSidebarCollapsed(false)}><ChevronRight size={17} /></IconButton>}
 
-        <div className={`mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2] ${sidebarCollapsed ? "sr-only" : ""}`}>Workspace</div>
-        <nav className="scrollbar-thin mt-2 flex-1 space-y-1 overflow-y-auto">
+        <div className={`mt-8 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2] ${sidebarCollapsed ? "sr-only" : ""}`}>Рабочее пространство</div>
+        <nav aria-label="Основная навигация" className="scrollbar-thin mt-2 flex-1 space-y-1 overflow-y-auto">
           {mainNav.map((item) => <NavItem key={item.href} {...item} collapsed={sidebarCollapsed} active={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)} />)}
           <div className="my-4 border-t border-[#eeeaf4]" />
           {secondaryNav.map((item) => <NavItem key={item.href} {...item} collapsed={sidebarCollapsed} active={pathname.startsWith(item.href)} />)}
@@ -105,18 +116,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
     </aside>
 
-    {mobileOpen && <div className="fixed inset-0 z-40 bg-[#21102d]/20 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)}>
-      <div className="h-full w-[292px] bg-white p-4 shadow-popover" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between"><Link href="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}><BrandMark /><span className="text-[13px] font-semibold">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span></Link><IconButton label="Close menu" onClick={() => setMobileOpen(false)}><X size={18} /></IconButton></div>
-        <div className="mt-8 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2]">Рабочее пространство</div>
-        <nav className="mt-2 space-y-1">{[...mainNav, ...secondaryNav].map((item) => <NavItem key={item.href} {...item} collapsed={false} active={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)} onClick={() => setMobileOpen(false)} />)}</nav>
-      </div>
-    </div>}
+    <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="motion-overlay fixed inset-0 z-40 bg-[#21102d]/20 backdrop-blur-sm lg:hidden" />
+        <Dialog.Content className="modal-surface fixed inset-y-0 left-0 z-50 w-[min(292px,85vw)] overflow-y-auto bg-white p-4 shadow-popover outline-none lg:hidden">
+          <Dialog.Title className="sr-only">Навигация рабочего пространства</Dialog.Title>
+          <Dialog.Description className="sr-only">Разделы приложения и настройки.</Dialog.Description>
+          <div className="flex items-center justify-between"><Link href="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}><BrandMark /><span className="text-[13px] font-semibold" translate="no">BCC HUB <span className="font-normal text-[#92909a]">DevRel OS</span></span></Link><Dialog.Close asChild><IconButton label="Закрыть меню"><X size={18} /></IconButton></Dialog.Close></div>
+          <div className="mt-8 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#aaa7b2]">Рабочее пространство</div>
+          <nav aria-label="Навигация рабочего пространства" className="mt-2 space-y-1">{[...mainNav, ...secondaryNav].map((item) => <NavItem key={item.href} {...item} collapsed={false} active={item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)} onClick={() => setMobileOpen(false)} />)}</nav>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
 
-    <div className={`transition-all duration-300 ${sidebarCollapsed ? "lg:pl-[78px]" : "lg:pl-[256px]"}`}>
+    <div className={`transition-[padding] duration-300 ${sidebarCollapsed ? "lg:pl-[78px]" : "lg:pl-[256px]"}`}>
       <header className="app-header sticky top-0 z-30">
         <div className="flex min-h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
-          <IconButton label="Open menu" className="lg:hidden" onClick={() => setMobileOpen(true)}><Menu size={19} /></IconButton>
+          <IconButton label="Открыть меню" className="lg:hidden" onClick={() => setMobileOpen(true)}><Menu size={19} /></IconButton>
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="hidden shrink-0 text-sm font-semibold text-bcc-ink sm:block lg:hidden">{currentLabel}</div>
             <button onClick={() => setPaletteOpen(true)} className="command-search w-full max-w-[390px]">
@@ -126,25 +142,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden items-center gap-2 md:flex">
             <button className="relative flex h-10 w-10 items-center justify-center rounded-xl text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink" aria-label="Уведомления" title="Уведомления"><Bell size={18} /><span className="notification-dot absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#ff4b5c]" /></button>
             <div className="mx-1 h-7 w-px bg-[#eeeaf4]" />
-            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-bcc-soft" aria-label="Открыть профиль"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eadcff] text-xs font-semibold text-bcc-deep">DW</span><span className="hidden lg:block"><span className="block text-xs font-semibold leading-4 text-bcc-ink">DevRel workspace</span><span className="block text-[10px] leading-4 text-[#92909a]">Владелец пространства</span></span><ChevronDown size={14} className="text-[#92909a]" /></button>
+            <button className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-left transition hover:bg-bcc-soft" aria-label="Открыть профиль"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eadcff] text-xs font-semibold text-bcc-deep">DW</span><span className="hidden lg:block"><span className="block text-xs font-semibold leading-4 text-bcc-ink" translate="no">BCC HUB</span><span className="block text-[10px] leading-4 text-[#92909a]">Владелец пространства</span></span><ChevronDown size={14} className="text-[#92909a]" /></button>
           </div>
-          <button onClick={() => setQuickOpen(true)} className="button-brand hidden min-h-10 px-3.5 text-sm sm:inline-flex sm:px-4"><Plus size={16} /><span>Быстро добавить</span></button>
+          <button onClick={() => requestQuickAdd()} className="button-brand hidden min-h-10 px-3.5 text-sm sm:inline-flex sm:px-4" aria-label="Быстро добавить"><Plus size={16} /><span>Добавить</span></button>
         </div>
         {!online && <div className="bg-[#FFF6DD] px-4 py-1.5 text-center text-xs font-medium text-[#876000]" role="status">Нет сети — проверь подключение перед сохранением изменений.</div>}
       </header>
-      <main className="page-wrap">{children}</main>
+      <main id="main-content" className="page-wrap"><div key={pathname} className="page-enter">{children}</div></main>
     </div>
 
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#ebe8f3] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl lg:hidden">
+    <nav aria-label="Мобильная навигация" className="safe-area-bottom fixed inset-x-0 bottom-0 z-30 border-t border-[#ebe8f3] bg-white/95 px-2 pt-1 backdrop-blur-xl lg:hidden">
       <div className="mx-auto grid max-w-md grid-cols-5 items-end">
         {mobileNav.slice(0, 2).map((item) => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}
-        <button onClick={() => setQuickOpen(true)} className="relative -mt-5 flex min-h-[76px] flex-col items-center justify-end gap-1 rounded-2xl text-[10px] font-semibold text-bcc-deep focus:outline-none focus:ring-4 focus:ring-bcc-lilac" aria-label="Быстро добавить" title="Быстро добавить"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-bcc-violet text-white shadow-[0_10px_22px_rgba(137,52,249,0.32)] transition active:scale-95"><Plus size={21} /></span><span>Добавить</span></button>
+        <button onClick={() => requestQuickAdd()} className="touch-target relative -mt-5 flex min-h-[76px] flex-col items-center justify-end gap-1 rounded-2xl text-[10px] font-semibold text-bcc-deep focus:outline-none focus:ring-4 focus:ring-bcc-lilac" aria-label="Быстро добавить" title="Быстро добавить"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-bcc-violet text-white shadow-[0_10px_22px_rgba(137,52,249,0.32)] transition-transform active:scale-95"><Plus size={21} /></span><span>Добавить</span></button>
         {mobileNav.slice(2).map((item) => <Link key={item.href} href={item.href} aria-current={pathname.startsWith(item.href) ? "page" : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname.startsWith(item.href) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}
         <button onClick={() => setMobileOpen(true)} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${mobileOpen ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`} aria-label="Открыть ещё разделы"><MoreHorizontal size={18} strokeWidth={1.8} /><span>Ещё</span></button>
       </div>
     </nav>
 
-    <QuickAdd open={quickOpen} onClose={() => setQuickOpen(false)} initialModule={quickModule} />
+    <QuickAdd open={quickOpen} onClose={() => { setQuickOpen(false); setQuickModule(undefined); }} initialModule={quickModule} />
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onCreate={(module) => { setPaletteOpen(false); setQuickModule(module); setQuickOpen(true); }} />
   </div>;
 }

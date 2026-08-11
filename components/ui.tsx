@@ -10,15 +10,16 @@ export function Button({ variant = "primary", className = "", ...props }: Button
 }
 
 export function IconButton({ label, className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
-  return <button aria-label={label} title={label} className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-full text-[#74747C] transition hover:bg-bcc-soft hover:text-bcc-ink focus:outline-none focus:ring-4 focus:ring-bcc-lilac ${className}`} {...props} />;
+  return <button aria-label={label} title={label} className={`touch-target inline-flex items-center justify-center rounded-full text-[#74747C] transition-[background-color,color,opacity] hover:bg-bcc-soft hover:text-bcc-ink focus:outline-none focus:ring-4 focus:ring-bcc-lilac ${className}`} {...props} />;
 }
 
 export function Modal({ open, title, description, onClose, children, wide = false }: { open: boolean; title: string; description?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   return <Dialog.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
     <Dialog.Portal>
-      <Dialog.Overlay className="fixed inset-0 z-50 bg-[#1D1D1D]/30 backdrop-blur-[2px]" />
-      <Dialog.Content className={`fixed inset-x-0 bottom-0 z-50 max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-popover outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:p-6 ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"}`}>
-        <div className="mb-5 flex items-start justify-between gap-4"><div><Dialog.Title className="text-xl font-semibold tracking-[-0.025em]">{title}</Dialog.Title>{description && <Dialog.Description className="mt-1 text-sm text-[#74747C]">{description}</Dialog.Description>}</div><Dialog.Close asChild><IconButton label="Закрыть"><X size={18} /></IconButton></Dialog.Close></div>
+      <Dialog.Overlay className="motion-overlay fixed inset-0 z-50 bg-[#1D1D1D]/30 backdrop-blur-[2px]" />
+      <Dialog.Content className={`modal-surface fixed inset-x-0 bottom-0 z-50 max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-popover outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-32px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-3xl sm:p-6 ${wide ? "sm:max-w-2xl" : "sm:max-w-lg"}`}>
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#e8e7ec] sm:hidden" aria-hidden="true" />
+        <div className="mb-5 flex items-start justify-between gap-4"><div className="min-w-0"><Dialog.Title className="text-xl font-semibold tracking-[-0.025em] text-pretty">{title}</Dialog.Title>{description && <Dialog.Description className="mt-1 text-sm text-[#74747C]">{description}</Dialog.Description>}</div><Dialog.Close asChild><IconButton label="Закрыть"><X size={18} /></IconButton></Dialog.Close></div>
         {children}
       </Dialog.Content>
     </Dialog.Portal>

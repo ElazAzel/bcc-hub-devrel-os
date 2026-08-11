@@ -1,22 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, CalendarDays, CheckCircle2, CircleAlert, FolderKanban, Plus, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, CircleAlert, FolderKanban, Users } from "lucide-react";
 import { listRecords } from "@/lib/data";
 import { buildDashboardSummary } from "@/lib/dashboard";
-import { formatDateRu, moduleCopy, ru } from "@/lib/i18n";
+import { formatDateRu } from "@/lib/i18n";
 import { type AnyRecord, type ModuleKey } from "@/lib/types";
-import { Button, EmptyState, ErrorState, LoadingState } from "./ui";
-import { QuickAdd } from "./quick-add";
+import { requestQuickAdd } from "@/lib/ui-events";
+import { EmptyState, ErrorState, LoadingState } from "./ui";
 import { StatusChip } from "./status-chip";
 
 const modules: ModuleKey[] = ["projects", "tasks", "people", "events", "commitments"];
 
 export function Dashboard() {
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quickModule, setQuickModule] = useState<ModuleKey | undefined>();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["dashboard-summary"], queryFn: async () => { const entries = await Promise.all(modules.map(async (module) => [module, await listRecords(module, { pageSize: 80, sort: { field: module === "events" ? "date_start" : module === "tasks" || module === "commitments" ? "due_date" : "updated_at", direction: module === "events" || module === "tasks" || module === "commitments" ? "asc" : "desc" } })] as const)); const data = Object.fromEntries(entries.map(([module, result]) => [module, result.items])) as Record<ModuleKey, AnyRecord[]>; const counts = Object.fromEntries(entries.map(([module, result]) => [module, result.total])) as Record<string, number>; return buildDashboardSummary({ projects: data.projects ?? [], tasks: data.tasks ?? [], people: data.people ?? [], events: data.events ?? [], commitments: data.commitments ?? [], counts }); }, staleTime: 30_000 });
   useEffect(() => { const onChange = () => void queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }); window.addEventListener("bcc:data-changed", onChange); return () => window.removeEventListener("bcc:data-changed", onChange); }, [queryClient]);
@@ -25,14 +23,13 @@ export function Dashboard() {
   if (query.isPending) return <LoadingState label="Собираем главное для рабочего дня…" />;
   if (query.isError || !summary) return <ErrorState message="Не удалось собрать обзор рабочего пространства." onRetry={() => void query.refetch()} />;
   return <div className="space-y-6">
-    <section className="flex flex-col gap-4 rounded-3xl bg-[linear-gradient(135deg,#fff_10%,#f7efff_100%)] p-5 shadow-soft sm:p-7 lg:flex-row lg:items-end lg:justify-between"><div><div className="eyebrow">Рабочее пространство</div><h1 className="page-title mt-2">{greeting}. Вот главное.</h1><p className="body-muted mt-2 max-w-2xl">Три вопроса на сегодня: что требует внимания, какой следующий шаг и что скоро наступит.</p></div><Button variant="brand" onClick={() => { setQuickModule(undefined); setQuickOpen(true); }}><Plus size={17} />Быстро добавить</Button></section>
+    <section className="flex flex-col gap-4 rounded-3xl bg-[linear-gradient(135deg,#fff_10%,#f7efff_100%)] p-5 shadow-soft sm:p-7 lg:flex-row lg:items-end lg:justify-between"><div><div className="eyebrow">Рабочее пространство</div><h1 className="page-title mt-2">{greeting}. Вот главное.</h1><p className="body-muted mt-2 max-w-2xl">Три вопроса на сегодня: что требует внимания, какой следующий шаг и что скоро наступит.</p></div><button type="button" onClick={() => requestQuickAdd()} className="hidden text-sm font-semibold text-bcc-deep hover:text-bcc-violet sm:inline-flex sm:items-center sm:gap-1">Нажми «Добавить» в шапке <ArrowRight size={15} /></button></section>
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[{ label: "Проекты", value: summary.metrics.projects, Icon: FolderKanban, href: "/projects" }, { label: "Активные задачи", value: summary.metrics.tasks, Icon: CheckCircle2, href: "/tasks" }, { label: "Люди", value: summary.metrics.people, Icon: Users, href: "/people" }, { label: "События", value: summary.metrics.events, Icon: CalendarDays, href: "/events" }].map(({ label, value, Icon, href }) => <Link key={label} href={href} className="surface flex items-center justify-between p-4 transition hover:-translate-y-0.5 hover:border-bcc-violet/30"><div><div className="text-sm text-[#74747C]">{label}</div><div className="mt-2 text-3xl font-semibold tracking-[-0.05em]">{value}</div></div><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-bcc-lilac text-bcc-deep"><Icon size={18} /></span></Link>)}</section>
     <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr_1fr]">
       <SummaryCard title="Что требует внимания?" icon={<CircleAlert size={17} />} tone="warning" action={summary.attention.length ? undefined : <Link href="/tasks" className="text-xs font-semibold text-bcc-deep">Открыть задачи</Link>}>{summary.attention.length ? <div className="space-y-2">{summary.attention.map((row) => <RecordRow key={row.id} row={row} href={row.title ? `/tasks/${row.id}` : "/commitments"} status={row.status ?? "Open"} date={row.due_date} />)}</div> : <EmptyState title="Всё спокойно" description="Просроченных задач и договорённостей нет." />}</SummaryCard>
-      <SummaryCard title="Какой следующий шаг?" icon={<CheckCircle2 size={17} />} action={<Link href="/tasks" className="text-xs font-semibold text-bcc-deep">Все задачи</Link>}>{summary.nextSteps.length ? <div className="space-y-2">{summary.nextSteps.map((row) => <RecordRow key={row.id} row={row} href={`/tasks/${row.id}`} status={row.status} date={row.due_date} />)}</div> : <EmptyState title="Шагов пока нет" description="Добавь задачу, чтобы двигаться дальше." action={<Button variant="brand" onClick={() => { setQuickModule("tasks"); setQuickOpen(true); }}>Создать задачу</Button>} />}</SummaryCard>
+      <SummaryCard title="Какой следующий шаг?" icon={<CheckCircle2 size={17} />} action={<Link href="/tasks" className="text-xs font-semibold text-bcc-deep">Все задачи</Link>}>{summary.nextSteps.length ? <div className="space-y-2">{summary.nextSteps.map((row) => <RecordRow key={row.id} row={row} href={`/tasks/${row.id}`} status={row.status} date={row.due_date} />)}</div> : <EmptyState title="Шагов пока нет" description="Открой задачи и добавь первый следующий шаг." action={<Link href="/tasks" className="button-brand">Открыть задачи</Link>} />}</SummaryCard>
       <SummaryCard title="Что скоро наступит?" icon={<CalendarDays size={17} />} action={<Link href="/calendar" className="text-xs font-semibold text-bcc-deep">Открыть календарь</Link>}>{summary.upcoming.length ? <div className="space-y-2">{summary.upcoming.map((row) => <RecordRow key={row.id} row={row} href={`/events/${row.id}`} status={row.status} date={row.date_start} />)}</div> : <EmptyState title="Ближайших событий нет" description="Запланируй событие, чтобы не держать дату в голове." />}</SummaryCard>
     </div>
-    <QuickAdd open={quickOpen} onClose={() => setQuickOpen(false)} initialModule={quickModule} />
   </div>;
 }
 
