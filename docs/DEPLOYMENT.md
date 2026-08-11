@@ -15,7 +15,7 @@ npm run typecheck && npm run lint && npm test && npm run build
 npm run start -- -p 3004
 ```
 
-Without Supabase variables the UI runs in local development mode. Для cloud-режима локальная Supabase-схема должна быть применена.
+Without Supabase variables the UI runs in local development mode. If credentials are present, set `NEXT_PUBLIC_DATA_MODE=local` for both build and start to force the fallback safely. Leave this variable empty in Vercel. Для cloud-режима локальная Supabase-схема должна быть применена.
 
 ## Supabase + Vercel
 

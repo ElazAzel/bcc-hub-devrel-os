@@ -21,6 +21,7 @@ function redirectToLogin(request: NextRequest, error?: "auth_unavailable") {
 
 export async function proxy(request: NextRequest) {
   if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next();
+  if (process.env.NEXT_PUBLIC_DATA_MODE === "local") return NextResponse.next();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
