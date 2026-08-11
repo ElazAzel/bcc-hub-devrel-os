@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUuid, parseTelegramCommand, truncateTelegramText } from "./telegram";
+import { escapeTelegramHtml, isUuid, parseTelegramCommand, truncateTelegramHtml, truncateTelegramText } from "./telegram";
 
 describe("Telegram commands", () => {
   it("parses bot usernames and arguments", () => {
@@ -14,5 +14,14 @@ describe("Telegram commands", () => {
 
   it("keeps Telegram replies below the API limit", () => {
     expect(truncateTelegramText("x".repeat(4000))).toHaveLength(3800);
+  });
+
+  it("escapes user text before Telegram HTML formatting", () => {
+    expect(escapeTelegramHtml("<b>A & B</b>")).toBe("&lt;b&gt;A &amp; B&lt;/b&gt;");
+  });
+
+  it("does not leave broken HTML tags when a formatted reply is truncated", () => {
+    expect(truncateTelegramHtml(`<b>${"x".repeat(4000)}</b>`)).not.toContain("<b>");
+    expect(truncateTelegramHtml(`<b>${"x".repeat(4000)}</b>`)).toHaveLength(3800);
   });
 });

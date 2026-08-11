@@ -20,7 +20,21 @@ export function telegramDisplayName(input: { username?: string | null; first_nam
   return [input.first_name, input.last_name].filter(Boolean).join(" ") || "Telegram";
 }
 
+export function escapeTelegramHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 export function truncateTelegramText(value: string, max = 3800) {
   const text = value.trim();
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
+export function truncateTelegramHtml(value: string, max = 3800) {
+  const text = value.trim();
+  if (text.length <= max) return text;
+  return truncateTelegramText(text.replace(/<[^>]*>/g, ""), max);
 }
