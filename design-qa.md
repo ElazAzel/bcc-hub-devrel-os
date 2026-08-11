@@ -37,7 +37,18 @@ No actionable P0, P1, or P2 visual findings remain.
 - Browser-rendered desktop and mobile screenshots captured from the local preview.
 - Visible primary actions checked in the rendered state: command search, Quick Add, sidebar navigation, mobile bottom navigation, floating Quick Add, panel “View all” links.
 - HTTP smoke test on `http://localhost:3004`: `/`, `/login`, `/projects`, `/tasks`, `/people`, `/events`, `/content`, `/ambassadors`, `/communities`, `/tech-radar`, `/knowledge`, `/analytics`, and `/calendar` all returned 200.
-- Console check: no visible runtime error overlay appeared in either rendered capture; the headless CLI used for screenshot capture did not expose a browser console stream, so console logging remains a minor residual test gap.
+- Console check: no visible runtime error overlay appeared in either rendered capture; the current in-app browser verification also reports no console warnings or errors.
+
+## Mobile navigation correction — 11 August 2026
+
+- Defect source: `C:\Temp\codex-clipboard-dc4dd262-117b-447f-a0d1-c787c1b1ca73.png` (280 × 119 px focused crop).
+- Post-fix implementation: `C:\Users\elaz2\Documents\DevRel\qa-artifacts\mobile-nav-fixed-2026-08-11.png` (375 × 812 px, CSS viewport 375 × 812, device scale factor 1).
+- State: Overview, local data mode, bottom navigation visible.
+- Full-view evidence: the source shows the floating `+` sharing the center position with `Задачи`; the implementation reserves a dedicated center cell labelled `Добавить` and moves `Задачи` into the next independent cell.
+- Focused-region evidence: the supplied source is already a focused navigation crop; the implementation screenshot keeps every navigation label legible, so a second crop is unnecessary.
+- Geometry: five equal grid cells, 44+ px touch targets, safe-area padding, and a measured document width equal to the 375 px viewport.
+- Iteration history: P1 overlap identified → absolute overlay replaced with a dedicated center slot → service-worker stale-cache issue found during browser QA and fixed → post-fix browser capture shows no overlap, horizontal overflow, console errors, or warnings.
+- Required surfaces: existing typography and BCC color tokens are preserved; spacing and touch targets are corrected; Lucide icons remain sharp; copy now explicitly labels the central action `Добавить`.
 
 ## Implementation checklist
 
@@ -45,11 +56,12 @@ No actionable P0, P1, or P2 visual findings remain.
 - [x] Mobile app composition and bottom navigation implemented.
 - [x] Overview KPI grid and dashboard panels rebuilt.
 - [x] Motion, hover lift, focus states, notification pulse, and reduced-motion fallback added.
+- [x] Mobile Quick Add occupies a dedicated navigation slot and no longer covers `Задачи`.
+- [x] Service worker no longer serves stale HTML or caches API requests.
 - [x] Production build, typecheck, lint, local preview, and route smoke checks passed.
 
 ## Follow-up polish
 
 - Add real avatar assets only when the product has approved user/profile sources.
-- Add browser-level interaction automation with console capture when a Playwright-capable browser tool is available.
 
 final result: passed

@@ -34,8 +34,7 @@ const secondaryNav = [
 const mobileNav = [
   { href: "/", label: "Главная", icon: Home },
   { href: "/projects", label: "Проекты", icon: FolderKanban },
-  { href: "/tasks", label: "Задачи", icon: CheckSquare },
-  { href: "/people", label: "Люди", icon: Users }
+  { href: "/tasks", label: "Задачи", icon: CheckSquare }
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -65,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
     setOnline(navigator.onLine);
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js?v=2").catch(() => undefined);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("online", update);
@@ -75,7 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   async function logout() { await signOut(); router.push("/login"); }
 
-  return <div className="app-shell min-h-screen pb-20 lg:pb-0">
+  return <div className="app-shell min-h-screen pb-24 lg:pb-0">
     <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-[#ebe8f3] bg-white transition-all duration-300 lg:block ${sidebarCollapsed ? "w-[78px]" : "w-[256px]"}`}>
       <div className="flex h-full flex-col px-3 py-4">
         <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between px-2"}`}>
@@ -136,9 +135,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="page-wrap">{children}</main>
     </div>
 
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#ebe8f3] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
-      <button onClick={() => setQuickOpen(true)} className="button-brand absolute left-1/2 top-[-22px] flex h-12 w-12 -translate-x-1/2 rounded-full p-0 shadow-[0_10px_22px_rgba(137,52,249,0.32)]" aria-label="Быстро добавить" title="Быстро добавить"><Plus size={21} /></button>
-      <div className="mx-auto flex max-w-md items-center justify-around">{mobileNav.map((item) => <Link key={item.href} href={item.href} className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}<button onClick={() => setMobileOpen(true)} className={`flex min-h-12 min-w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${mobileOpen ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`} aria-label="Открыть ещё разделы"><MoreHorizontal size={18} strokeWidth={1.8} /><span>Ещё</span></button></div>
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#ebe8f3] bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl lg:hidden">
+      <div className="mx-auto grid max-w-md grid-cols-5 items-end">
+        {mobileNav.slice(0, 2).map((item) => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}
+        <button onClick={() => setQuickOpen(true)} className="relative -mt-5 flex min-h-[76px] flex-col items-center justify-end gap-1 rounded-2xl text-[10px] font-semibold text-bcc-deep focus:outline-none focus:ring-4 focus:ring-bcc-lilac" aria-label="Быстро добавить" title="Быстро добавить"><span className="flex h-12 w-12 items-center justify-center rounded-full bg-bcc-violet text-white shadow-[0_10px_22px_rgba(137,52,249,0.32)] transition active:scale-95"><Plus size={21} /></span><span>Добавить</span></button>
+        {mobileNav.slice(2).map((item) => <Link key={item.href} href={item.href} aria-current={pathname.startsWith(item.href) ? "page" : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${pathname.startsWith(item.href) ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`}><item.icon size={18} strokeWidth={1.8} /><span>{item.label}</span></Link>)}
+        <button onClick={() => setMobileOpen(true)} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition ${mobileOpen ? "bg-[#f0e5ff] font-semibold text-bcc-deep" : "text-[#74747C]"}`} aria-label="Открыть ещё разделы"><MoreHorizontal size={18} strokeWidth={1.8} /><span>Ещё</span></button>
+      </div>
     </nav>
 
     <QuickAdd open={quickOpen} onClose={() => setQuickOpen(false)} initialModule={quickModule} />
@@ -147,7 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function BrandMark() {
-  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-[0_7px_16px_rgba(137,52,249,0.2)]"><img src="/icons/icon.svg" alt="" className="h-9 w-9 rounded-xl" /></span>;
+  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-[0_7px_16px_rgba(137,52,249,0.2)]"><img src="/icons/icon.svg" alt="" loading="lazy" className="h-9 w-9 rounded-xl" /></span>;
 }
 
 function BookIcon() { return <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15"><Database size={13} /></span>; }
