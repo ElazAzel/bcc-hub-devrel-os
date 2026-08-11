@@ -18,6 +18,11 @@ Open `http://localhost:3004` for the local production smoke, or use the port pri
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 NEXT_PUBLIC_DATA_MODE=
+
+# Telegram integration — server-only Vercel variables
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+SUPABASE_ADMIN_KEY=
 ```
 
 Supabase is the production source of truth. Without env variables, the clearly marked local mode uses generic seed data and local persistence only for development.
@@ -27,6 +32,18 @@ To force local mode while keeping Supabase credentials in `.env.local`, set `NEX
 ## Supabase setup
 
 Apply both migrations in order: `202608100001_initial.sql`, then `202608100002_optimization.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The second migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
+
+## Telegram assistant
+
+Migration `202608110003_telegram_integration.sql` adds one-time chat linking, RLS-protected connection records and idempotent webhook updates. Add `TELEGRAM_BOT_TOKEN`, a random `TELEGRAM_WEBHOOK_SECRET` and the server-only Supabase admin key as Vercel Production variables. The admin key is used only inside the server webhook route and must never have the `NEXT_PUBLIC_` prefix.
+
+After deploying, configure the webhook from a machine with the new bot token:
+
+```bash
+APP_URL=https://bcc-hub-devrel-os.vercel.app npm run telegram:setup
+```
+
+Then open **Настройки → Telegram-ассистент**, create a code and send `/start КОД` to `@DevRelAssistbot`. Available commands: `/task`, `/note`, `/tasks`, `/today`, `/done`, `/help`. The webhook accepts only Telegram requests with the configured secret header. Revoke any previously exposed bot token through BotFather before adding the replacement.
 
 ## Commands
 

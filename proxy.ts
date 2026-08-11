@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 function isPublicPath(pathname: string) {
   return pathname === "/login"
     || pathname === "/api/health"
+    || pathname === "/api/telegram/webhook"
     || pathname.startsWith("/_next")
     || pathname.startsWith("/icons")
     || pathname === "/sw.js"
