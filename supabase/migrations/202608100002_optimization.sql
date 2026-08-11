@@ -1,47 +1,59 @@
 -- Search and write-path optimizations for the production workspace.
 -- Keep the simple text configuration: it works for Russian, English and product names.
 
+-- PostgreSQL does not allow the two-argument text-config form of to_tsvector
+-- inside a generated column because it is not marked immutable. Keep the
+-- denormalized document, but use a deliberately immutable wrapper with a
+-- constant regconfig so the column remains maintained by PostgreSQL itself.
+create or replace function public.simple_search_document(input text)
+returns tsvector
+language sql immutable parallel safe
+set search_path = public
+as $$
+  select to_tsvector('simple'::regconfig, coalesce(input, ''));
+$$;
+
 alter table public.projects add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, description, direction, goal, next_action))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(direction, '') || ' ' || coalesce(goal, '') || ' ' || coalesce(next_action, ''))
 ) stored;
 alter table public.tasks add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, description, context, source_label, next_action))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(context, '') || ' ' || coalesce(source_label, '') || ' ' || coalesce(next_action, ''))
 ) stored;
 alter table public.contacts add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', name, first_name, last_name, position, organization_name, email, notes))
+  public.simple_search_document(coalesce(name, '') || ' ' || coalesce(first_name, '') || ' ' || coalesce(last_name, '') || ' ' || coalesce(position, '') || ' ' || coalesce(organization_name, '') || ' ' || coalesce(email, '') || ' ' || coalesce(notes, ''))
 ) stored;
 alter table public.organizations add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', name, type, website, description, city, notes))
+  public.simple_search_document(coalesce(name, '') || ' ' || coalesce(type, '') || ' ' || coalesce(website, '') || ' ' || coalesce(description, '') || ' ' || coalesce(city, '') || ' ' || coalesce(notes, ''))
 ) stored;
 alter table public.interactions add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, topic, summary, decision, next_action))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(topic, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(decision, '') || ' ' || coalesce(next_action, ''))
 ) stored;
 alter table public.commitments add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, description, owed_by))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(owed_by, ''))
 ) stored;
 alter table public.events add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, type, location, format, audience))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(type, '') || ' ' || coalesce(location, '') || ' ' || coalesce(format, '') || ' ' || coalesce(audience, ''))
 ) stored;
 alter table public.content_items add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, content_type, channel, status, description))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(content_type, '') || ' ' || coalesce(channel, '') || ' ' || coalesce(status, '') || ' ' || coalesce(description, ''))
 ) stored;
 alter table public.communities add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', name, description, status))
+  public.simple_search_document(coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || coalesce(status, ''))
 ) stored;
 alter table public.ambassadors add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', name, track, level, status, notes))
+  public.simple_search_document(coalesce(name, '') || ' ' || coalesce(track, '') || ' ' || coalesce(level, '') || ' ' || coalesce(status, '') || ' ' || coalesce(notes, ''))
 ) stored;
 alter table public.tech_radar_items add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', name, slug, domain, category, ring, description, recommendation, rationale, version))
+  public.simple_search_document(coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(domain, '') || ' ' || coalesce(category, '') || ' ' || coalesce(ring, '') || ' ' || coalesce(description, '') || ' ' || coalesce(recommendation, '') || ' ' || coalesce(rationale, '') || ' ' || coalesce(version, ''))
 ) stored;
 alter table public.documents add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, type, location_type, description, external_url))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(type, '') || ' ' || coalesce(location_type, '') || ' ' || coalesce(description, '') || ' ' || coalesce(external_url, ''))
 ) stored;
 alter table public.decisions add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, context, problem, options, decision, reason, consequences))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(context, '') || ' ' || coalesce(problem, '') || ' ' || coalesce(options, '') || ' ' || coalesce(decision, '') || ' ' || coalesce(reason, '') || ' ' || coalesce(consequences, ''))
 ) stored;
 alter table public.knowledge_cases add column if not exists search_document tsvector generated always as (
-  to_tsvector('simple', concat_ws(' ', title, situation, problem, trigger, actions, result, reusable_solution))
+  public.simple_search_document(coalesce(title, '') || ' ' || coalesce(situation, '') || ' ' || coalesce(problem, '') || ' ' || coalesce(trigger, '') || ' ' || coalesce(actions, '') || ' ' || coalesce(result, '') || ' ' || coalesce(reusable_solution, ''))
 ) stored;
 
 create index if not exists projects_search_document_idx on public.projects using gin(search_document) where archived_at is null;
