@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildDashboardSummary } from "./dashboard";
 import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./search";
 import { groupTasksByStatus } from "./task-board";
+import { compareTriage, triageScore } from "./triage";
 
 const base = { created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" };
 
@@ -14,6 +15,21 @@ describe("search and ranking", () => {
   it("returns several duplicate candidates", () => {
     const rows = [{ ...base, id: "1", title: "Meetup" }, { ...base, id: "2", title: "Meetup" }, { ...base, id: "3", title: "Other" }];
     expect(findDuplicateCandidates("projects", rows, { title: "Meetup" }, 5).map((row) => row.id)).toEqual(["1", "2"]);
+  });
+
+  it("finds a close project title without treating unrelated records as duplicates", () => {
+    const rows = [{ ...base, id: "1", title: "Frontend Meetup 2026" }, { ...base, id: "2", title: "Backend Workshop" }];
+    expect(findDuplicateCandidates("projects", rows, { title: "Frontend Meetup 2026!" }, 5).map((row) => row.id)).toEqual(["1"]);
+  });
+});
+
+describe("triage scoring", () => {
+  it("puts overdue critical work above a future low-priority task", () => {
+    const now = new Date("2026-08-10T12:00:00Z");
+    const overdue = { ...base, id: "overdue", title: "Escalate", status: "Inbox", priority: "Critical", due_date: "2026-08-01" };
+    const future = { ...base, id: "future", title: "Read docs", status: "Planned", priority: "Low", due_date: "2026-08-20" };
+    expect(triageScore(overdue, { now })).toBeGreaterThan(triageScore(future, { now }));
+    expect(compareTriage(overdue, future, { now })).toBeLessThan(0);
   });
 });
 

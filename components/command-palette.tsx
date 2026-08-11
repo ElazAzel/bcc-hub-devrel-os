@@ -17,11 +17,12 @@ export function CommandPalette({ open, onClose, onCreate }: { open: boolean; onC
   useEffect(() => { if (open) { setQuery(""); setResults([]); } }, [open]);
   useEffect(() => {
     const currentRequest = ++requestId.current;
+    const controller = new AbortController();
     const handle = window.setTimeout(() => {
       if (!query.trim()) { setResults([]); return; }
-      void searchAll(query).then((next) => { if (currentRequest === requestId.current) setResults(next); }).catch(() => { if (currentRequest === requestId.current) setResults([]); });
+      void searchAll(query, 40, controller.signal).then((next) => { if (currentRequest === requestId.current) setResults(next); }).catch((error) => { if (currentRequest === requestId.current && error?.name !== "AbortError") setResults([]); });
     }, 180);
-    return () => window.clearTimeout(handle);
+    return () => { window.clearTimeout(handle); controller.abort(); };
   }, [query]);
   function openResult(result: WorkspaceSearchResult) { onClose(); router.push(`/${result.module}/${result.id}`); }
   return <Modal open={open} onClose={onClose} title="Быстрый поиск" description="Найди запись, раздел или действие. Ctrl+K открывает поиск в любой момент." wide>
