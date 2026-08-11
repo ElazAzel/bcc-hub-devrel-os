@@ -43,6 +43,8 @@ After deploying, configure the webhook from a machine with the new bot token:
 APP_URL=https://bcc-hub-devrel-os.vercel.app npm run telegram:setup
 ```
 
+Команда также обновляет встроенное меню Telegram через `setMyCommands`. Описания команд отправляются как UTF-8, поэтому кириллица не превращается в `????`.
+
 Then open **Настройки → Telegram-ассистент**, create a code and send `/start КОД` to `@DevRelAssistbot`. Available commands: `/task`, `/note`, `/tasks`, `/today`, `/done`, `/help`. The webhook accepts only Telegram requests with the configured secret header. Revoke any previously exposed bot token through BotFather before adding the replacement.
 
 ## Commands
