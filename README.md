@@ -17,9 +17,12 @@ Open `http://localhost:3004` for the local production smoke, or use the port pri
 ```env
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_DATA_MODE=
 ```
 
 Supabase is the production source of truth. Without env variables, the clearly marked local mode uses generic seed data and local persistence only for development.
+
+To force local mode while keeping Supabase credentials in `.env.local`, set `NEXT_PUBLIC_DATA_MODE=local` for both build and start. Leave it empty in Preview and Production.
 
 ## Supabase setup
 
