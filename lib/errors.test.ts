@@ -12,7 +12,9 @@ describe("data error messages", () => {
     expect(getDataErrorMessage({ message: "Invalid login credentials" })).toBe("Неверная почта или пароль.");
   });
 
-  it("preserves useful unknown messages", () => {
-    expect(toDataError({ message: "Custom failure" })).toEqual(new Error("Custom failure"));
+  it("does not expose unknown database messages", () => {
+    expect(toDataError({ message: "Custom failure" })).toEqual(
+      new Error("Не удалось выполнить операцию. Повтори попытку."),
+    );
   });
 });

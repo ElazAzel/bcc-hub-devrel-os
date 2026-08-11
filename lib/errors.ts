@@ -34,7 +34,10 @@ export function getDataErrorMessage(error: unknown): string {
   if (/aborterror|failed to fetch|networkerror|fetch failed|timeout/i.test(context)) {
     return "Не удалось связаться с облаком. Проверь подключение и повтори попытку.";
   }
-  return message || "Не удалось выполнить операцию. Повтори попытку.";
+  // Do not surface raw PostgREST/Postgres messages to the browser. They can
+  // reveal table, column, constraint and deployment details. Known safe cases
+  // above remain actionable; everything else gets a generic user message.
+  return "Не удалось выполнить операцию. Повтори попытку.";
 }
 
 export function toDataError(error: unknown): Error {
