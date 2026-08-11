@@ -1,53 +1,55 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
+import { NextRequest, NextResponse } from "next/server";
 
-type RequestCookie = { name: string; value: string };
-
-function parseCookies(request: Request): Map<string, string> {
-  const cookies = new Map<string, string>();
-  for (const part of (request.headers.get("cookie") ?? "").split(";")) {
-    const separator = part.indexOf("=");
-    if (separator < 0) continue;
-    const name = part.slice(0, separator).trim();
-    const value = part.slice(separator + 1).trim();
-    if (name) cookies.set(name, decodeURIComponent(value));
-  }
-  return cookies;
+function isPublicPath(pathname: string) {
+  return pathname === "/login"
+    || pathname === "/api/health"
+    || pathname.startsWith("/_next")
+    || pathname.startsWith("/icons")
+    || pathname === "/sw.js"
+    || pathname === "/manifest.webmanifest";
 }
 
-function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
-  let cookie = `${name}=${encodeURIComponent(value)}`;
-  if (options.maxAge !== undefined) cookie += `; Max-Age=${Math.floor(options.maxAge)}`;
-  if (options.domain) cookie += `; Domain=${options.domain}`;
-  if (options.path) cookie += `; Path=${options.path}`;
-  if (options.expires) cookie += `; Expires=${options.expires.toUTCString()}`;
-  if (options.httpOnly) cookie += "; HttpOnly";
-  if (options.secure) cookie += "; Secure";
-  if (options.priority) cookie += `; Priority=${options.priority}`;
-  if (options.sameSite === true) cookie += "; SameSite=Lax";
-  if (typeof options.sameSite === "string") cookie += `; SameSite=${options.sameSite}`;
-  return cookie;
+function redirectToLogin(request: NextRequest, error?: "auth_unavailable") {
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
+  loginUrl.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+  if (error) loginUrl.searchParams.set("error", error);
+  return NextResponse.redirect(loginUrl);
 }
 
-function isPublicPath(pathname: string) { return pathname === "/login" || pathname.startsWith("/_next") || pathname.startsWith("/icons") || pathname === "/sw.js" || pathname === "/manifest.webmanifest"; }
+export async function proxy(request: NextRequest) {
+  if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next();
 
-export async function proxy(request: Request) {
-  const url = new URL(request.url);
-  const hasSupabase = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
-  if (!hasSupabase || isPublicPath(url.pathname)) return NextResponse.next();
-  const requestCookies = parseCookies(request);
-  const response = NextResponse.next();
-  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !supabaseKey) return NextResponse.next();
+
+  let supabaseResponse = NextResponse.next({ request });
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
-      getAll(): RequestCookie[] { return Array.from(requestCookies, ([name, value]) => ({ name, value })); },
-      setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
-        for (const { name, value, options } of cookiesToSet) { requestCookies.set(name, value); response.headers.append("Set-Cookie", serializeCookie(name, value, options)); }
-      }
-    }
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        supabaseResponse = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options));
+      },
+    },
   });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) { url.pathname = "/login"; url.searchParams.set("next", new URL(request.url).pathname); return NextResponse.redirect(url); }
-  return response;
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return redirectToLogin(request);
+  } catch {
+    return redirectToLogin(request, "auth_unavailable");
+  }
+
+  return supabaseResponse;
 }
 
-import { NextResponse } from "next/server";
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};

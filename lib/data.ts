@@ -1,6 +1,7 @@
 import { getSupabaseBrowserClient } from "./supabase/client";
 import { SEED_DATA } from "./seed";
 import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./search";
+import { toDataError } from "./errors";
 import { displayName, getModule, type AnyRecord, type ModuleKey, type RecordListQuery, type RecordPage, type WorkspaceSearchResult } from "./types";
 
 const supabase = getSupabaseBrowserClient();
@@ -74,20 +75,21 @@ async function logActivity(action: string, entityType: string, entityId: string,
 
 export async function getCurrentUser() {
   if (!supabase) return { id: ownerKey(), email: "local@devrel.local" };
-  const { data } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw toDataError(error);
   return data.user ? { id: data.user.id, email: data.user.email ?? "" } : null;
 }
 
 export async function signIn(email: string, password: string) {
   if (!supabase) return { error: null };
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  return { error };
+  return { error: error ? toDataError(error) : null };
 }
 
 export async function signUp(email: string, password: string) {
   if (!supabase) return { error: null };
   const { error } = await supabase.auth.signUp({ email, password });
-  return { error };
+  return { error: error ? toDataError(error) : null };
 }
 
 export async function signOut() { if (supabase) await supabase.auth.signOut(); }
@@ -116,7 +118,7 @@ export async function listRecords(module: ModuleKey, query: RecordListQuery = {}
   if (dateColumn && query.dateTo) request = request.lte(dateColumn, query.dateTo);
   const start = (page - 1) * pageSize;
   const { data, error, count } = await request.range(start, start + pageSize - 1);
-  if (error) throw new Error(error.message);
+  if (error) throw toDataError(error);
   const total = count ?? data?.length ?? 0;
   return { items: (data ?? []) as unknown as AnyRecord[], total, page, pageSize, hasMore: start + pageSize < total };
 }
@@ -131,7 +133,7 @@ export async function loadRecord(module: ModuleKey, id: string): Promise<AnyReco
   if (!config) return null;
   if (!supabase) return readLocal(module).find((row) => row.id === id && !row.archived_at) ?? null;
   const { data, error } = await supabase.from(config.table).select("*").eq("id", id).is("archived_at", null).maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) throw toDataError(error);
   return (data as AnyRecord | null) ?? null;
 }
 
@@ -143,7 +145,8 @@ export async function loadActivity(entityType?: string, entityId?: string): Prom
   let query = supabase.from("activity_log").select("*").order("created_at", { ascending: false }).limit(50);
   if (entityType) query = query.eq("entity_type", entityType);
   if (entityId) query = query.eq("entity_id", entityId);
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) throw toDataError(error);
   return (data ?? []) as AnyRecord[];
 }
 
@@ -155,7 +158,7 @@ async function logActivities(activities: Array<{ action: string; entityType: str
     const ownerId = user.data.user.id;
     const timestamp = new Date().toISOString();
     const { error } = await supabase.from("activity_log").insert(activities.map((activity) => ({ id: crypto.randomUUID(), action: activity.action, entity_type: activity.entityType, entity_id: activity.entityId, message: activity.message, created_at: timestamp, owner_id: ownerId })));
-    if (error) throw new Error(error.message);
+    if (error) throw toDataError(error);
     return;
   }
   const key = "bcc-hub:activity";
@@ -167,7 +170,7 @@ async function logActivities(activities: Array<{ action: string; entityType: str
 
 export async function createRecords(module: ModuleKey, inputs: Array<Record<string, unknown>>): Promise<AnyRecord[]> {
   const config = getModule(module);
-  if (!config) throw new Error("Unknown module");
+  if (!config) throw new Error("Неизвестный раздел");
   if (!inputs.length) return [];
   const timestamp = new Date().toISOString();
   if (!supabase) {
@@ -177,10 +180,11 @@ export async function createRecords(module: ModuleKey, inputs: Array<Record<stri
     return records;
   }
   const user = await supabase.auth.getUser();
+  if (user.error) throw toDataError(user.error);
   if (!user.data.user) throw new Error("Нужна авторизация");
   const ownerId = user.data.user.id;
   const { data, error } = await supabase.from(config.table).insert(inputs.map((input) => ({ ...input, owner_id: ownerId, created_at: timestamp, updated_at: timestamp }))).select();
-  if (error) throw new Error(error.message);
+  if (error) throw toDataError(error);
   const records = (data ?? []) as AnyRecord[];
   await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
   return records;
@@ -194,7 +198,7 @@ export async function createRecord(module: ModuleKey, input: Record<string, unkn
 
 export async function updateRecord(module: ModuleKey, id: string, input: Record<string, unknown>): Promise<AnyRecord> {
   const config = getModule(module);
-  if (!config) throw new Error("Unknown module");
+  if (!config) throw new Error("Неизвестный раздел");
   if (module === "ambassadors" && Object.prototype.hasOwnProperty.call(input, "total_xp")) {
     const existing = await loadRecord(module, id);
     const delta = Number(input.total_xp ?? 0) - Number(existing?.total_xp ?? 0);
@@ -214,20 +218,20 @@ export async function updateRecord(module: ModuleKey, id: string, input: Record<
     return updated;
   }
   const { data, error } = await supabase.from(config.table).update({ ...input, updated_at: timestamp }).eq("id", id).select().single();
-  if (error) throw new Error(error.message);
+  if (error) throw toDataError(error);
   await logActivity("entity updated", module, id, `${displayName(data as AnyRecord)} обновлено`);
   return data as AnyRecord;
 }
 
 export async function archiveRecord(module: ModuleKey, id: string) {
   const config = getModule(module);
-  if (!config) throw new Error("Unknown module");
+  if (!config) throw new Error("Неизвестный раздел");
   const archived = new Date().toISOString();
   if (!supabase) {
     writeLocal(module, readLocal(module).map((row) => row.id === id ? { ...row, archived_at: archived, updated_at: archived } : row));
   } else {
     const { error } = await supabase.from(config.table).update({ archived_at: archived, updated_at: archived }).eq("id", id);
-    if (error) throw new Error(error.message);
+    if (error) throw toDataError(error);
   }
   await logActivity("entity archived", module, id, "Запись перемещена в архив");
 }
@@ -239,8 +243,10 @@ export async function addRelation(sourceType: string, sourceId: string, relation
     window.localStorage.setItem("bcc-hub:relations", JSON.stringify([record, ...rows]));
   } else {
     const user = await supabase.auth.getUser();
+    if (user.error) throw toDataError(user.error);
+    if (!user.data.user) throw new Error("Нужна авторизация");
     const { error } = await supabase.from("entity_relations").insert({ ...record, owner_id: user.data.user?.id });
-    if (error) throw new Error(error.message);
+    if (error) throw toDataError(error);
   }
   await logActivity("relation added", sourceType, sourceId, `Связь ${relationType} добавлена`);
 }
@@ -255,6 +261,7 @@ export async function addAmbassadorContribution(ambassadorId: string, input: { t
     writeLocal("ambassadors", rows);
   } else {
     const user = await supabase.auth.getUser();
+    if (user.error) throw toDataError(user.error);
     if (!user.data.user) throw new Error("Нужна авторизация");
     contribution.owner_id = user.data.user.id;
     const { error: atomicError } = await supabase.rpc("apply_ambassador_contribution", {
@@ -272,11 +279,11 @@ export async function addAmbassadorContribution(ambassadorId: string, input: { t
       return;
     }
     const { error } = await supabase.from("ambassador_contributions").insert(contribution);
-    if (error) throw new Error(error.message);
+    if (error) throw toDataError(error);
     const { data: ledger } = await supabase.from("ambassador_contributions").select("final_xp").eq("ambassador_id", ambassadorId).eq("status", "Approved");
     const total = (ledger ?? []).reduce((sum, row) => sum + Number(row.final_xp ?? 0), 0);
     const { error: updateError } = await supabase.from("ambassadors").update({ total_xp: total, last_contribution_at: contribution.date, updated_at: contribution.updated_at }).eq("id", ambassadorId);
-    if (updateError) throw new Error(updateError.message);
+    if (updateError) throw toDataError(updateError);
   }
   await logActivity("XP added", "ambassadors", ambassadorId, `${input.final_xp} XP добавлено через contribution ledger`);
 }

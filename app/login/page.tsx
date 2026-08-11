@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, LockKeyhole, WifiOff } from "lucide-react";
 import { isCloudMode, signIn } from "@/lib/data";
 import { Button, Field, Input } from "@/components/ui";
@@ -10,9 +10,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("error") === "auth_unavailable") {
+      setError("Сервис авторизации временно недоступен. Проверь подключение и повтори попытку.");
+    }
+  }, []);
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setLoading(true); setError("");
-    try { const result = await signIn(email, password); if (result.error) throw result.error; window.location.href = "/"; }
+    try {
+      const result = await signIn(email, password);
+      if (result.error) throw result.error;
+      const next = new URLSearchParams(window.location.search).get("next");
+      window.location.assign(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Не удалось войти"); }
     finally { setLoading(false); }
   }
