@@ -10,7 +10,7 @@ copy .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:3004` for the local production smoke, or use the port printed by `npm run dev`.
+Open `http://localhost:3004` for the local production smoke, or use the port printed by `npm run dev`. The deployed production app is available at `https://bcc-hub-devrel-os.vercel.app`.
 
 ## Environment variables
 
@@ -23,7 +23,7 @@ Supabase is the production source of truth. Without env variables, the clearly m
 
 ## Supabase setup
 
-Apply both migrations in order: `202608100001_initial.sql`, then `202608100002_optimization.sql`. The second migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
+Apply both migrations in order: `202608100001_initial.sql`, then `202608100002_optimization.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The second migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
 
 ## Commands
 
