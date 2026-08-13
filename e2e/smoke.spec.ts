@@ -57,3 +57,26 @@ test("core records persist and global search opens a detail page", async ({ page
   await page.reload();
   await expect(page.getByRole("heading", { name: taskTitle })).toBeVisible();
 });
+
+test("task detail supports subtasks, comments and relationship map", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/tasks/seed-11");
+  await expect(page.getByRole("heading", { name: "Подтвердить спикера" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Субзадачи" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Добавить субзадачу" }).click();
+  const subtaskDialog = page.getByRole("dialog");
+  await subtaskDialog.getByLabel("Название").fill(`Подзадача ${Date.now()}`);
+  await subtaskDialog.getByRole("button", { name: "Создать субзадачу" }).click();
+  await expect(subtaskDialog).toBeHidden();
+  await expect(page.getByText(/Подзадача \d+/)).toBeVisible();
+
+  await page.getByLabel("Новый комментарий").fill("Контекст сохранён в рабочей записи");
+  await page.getByRole("button", { name: "Добавить комментарий" }).click();
+  await expect(page.getByText("Контекст сохранён в рабочей записи")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Связи и карта" }).click();
+  await expect(page.getByRole("heading", { name: "Связи записи" })).toBeVisible();
+  await expect(page.getByText("Центр карты")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});

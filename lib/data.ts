@@ -2,7 +2,8 @@ import { getSupabaseBrowserClient } from "./supabase/client";
 import { SEED_DATA } from "./seed";
 import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./search";
 import { toDataError } from "./errors";
-import { displayName, getModule, type AnyRecord, type ModuleKey, type RecordListQuery, type RecordPage, type WorkspaceSearchResult } from "./types";
+import { displayName, getModule, type AnyRecord, type ConnectionEdge, type ConnectionNode, type EntityComment, type EntityRelation, type ModuleKey, type RecordListQuery, type RecordPage, type TaskReadiness, type WorkspaceSearchResult } from "./types";
+import { calculateTaskReadiness } from "./readiness";
 
 const supabase = getSupabaseBrowserClient();
 export const isCloudMode = Boolean(supabase);
@@ -280,6 +281,166 @@ export async function addRelation(sourceType: string, sourceId: string, relation
     if (error) throw toDataError(error);
   }
   await logActivity("relation added", sourceType, sourceId, `Связь ${relationType} добавлена`);
+}
+
+export async function loadRelations(entityType?: string, entityId?: string): Promise<EntityRelation[]> {
+  if (!supabase) {
+    const rows = JSON.parse(window.localStorage.getItem("bcc-hub:relations") ?? "[]") as EntityRelation[];
+    return rows.filter((row) => !entityType || !entityId ||
+      (row.source_type === entityType && row.source_id === entityId) ||
+      (row.target_type === entityType && row.target_id === entityId));
+  }
+
+  if (!entityType || !entityId) {
+    const { data, error } = await supabase.from("entity_relations").select("*").order("created_at", { ascending: false }).limit(250);
+    if (error) throw toDataError(error);
+    return (data ?? []) as EntityRelation[];
+  }
+
+  const [source, target] = await Promise.all([
+    supabase.from("entity_relations").select("*").eq("source_type", entityType).eq("source_id", entityId).limit(100),
+    supabase.from("entity_relations").select("*").eq("target_type", entityType).eq("target_id", entityId).limit(100)
+  ]);
+  if (source.error) throw toDataError(source.error);
+  if (target.error) throw toDataError(target.error);
+  return [...(source.data ?? []), ...(target.data ?? [])].filter((row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index) as EntityRelation[];
+}
+
+export async function loadSubtasks(parentTaskId: string): Promise<AnyRecord[]> {
+  if (!supabase) return readLocal("tasks").filter((row) => row.parent_task_id === parentTaskId && !row.archived_at);
+  const { data, error } = await supabase.from("tasks").select("*").eq("parent_task_id", parentTaskId).is("archived_at", null).order("updated_at", { ascending: false }).limit(100);
+  if (error) throw toDataError(error);
+  return (data ?? []) as AnyRecord[];
+}
+
+export async function createSubtask(parentTaskId: string, input: Record<string, unknown>): Promise<AnyRecord> {
+  return createRecord("tasks", { ...input, parent_task_id: parentTaskId });
+}
+
+export async function loadTaskReadiness(taskId: string): Promise<TaskReadiness> {
+  return calculateTaskReadiness(await loadSubtasks(taskId));
+}
+
+export async function loadComments(entityType: string, entityId: string): Promise<EntityComment[]> {
+  if (!supabase) {
+    const rows = JSON.parse(window.localStorage.getItem("bcc-hub:comments") ?? "[]") as EntityComment[];
+    return rows.filter((row) => row.entity_type === entityType && row.entity_id === entityId);
+  }
+  const comments: EntityComment[] = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from("entity_comments").select("*").eq("entity_type", entityType).eq("entity_id", entityId).order("created_at", { ascending: true }).range(offset, offset + pageSize - 1);
+    if (error) throw toDataError(error);
+    const page = (data ?? []) as EntityComment[];
+    comments.push(...page);
+    if (page.length < pageSize) return comments;
+  }
+}
+
+export async function addComment(entityType: string, entityId: string, body: string): Promise<EntityComment> {
+  const text = body.trim().slice(0, 10000);
+  if (!text) throw new Error("Комментарий не может быть пустым");
+  const now = new Date().toISOString();
+  if (!supabase) {
+    const comment: EntityComment = { id: crypto.randomUUID(), owner_id: ownerKey(), entity_type: entityType, entity_id: entityId, body: text, author_name: "Локальный режим", created_at: now, updated_at: now };
+    const rows = JSON.parse(window.localStorage.getItem("bcc-hub:comments") ?? "[]") as EntityComment[];
+    window.localStorage.setItem("bcc-hub:comments", JSON.stringify([...rows, comment]));
+    await logActivity("comment added", entityType, entityId, "Добавлен комментарий");
+    return comment;
+  }
+  const user = await supabase.auth.getUser();
+  if (user.error) throw toDataError(user.error);
+  if (!user.data.user) throw new Error("Нужна авторизация");
+  const { data, error } = await supabase.from("entity_comments").insert({ owner_id: user.data.user.id, entity_type: entityType, entity_id: entityId, body: text, author_name: user.data.user.email ?? "Пользователь" }).select().single();
+  if (error) throw toDataError(error);
+  await logActivity("comment added", entityType, entityId, "Добавлен комментарий");
+  return data as EntityComment;
+}
+
+function isModuleKey(value: string): value is ModuleKey {
+  return Boolean(getModule(value));
+}
+
+function connectionKey(module: string, id: string) {
+  return `${module}:${id}`;
+}
+
+export async function loadConnectionGraph(module: ModuleKey, id: string): Promise<{ nodes: ConnectionNode[]; edges: ConnectionEdge[] }> {
+  const rootRecord = await loadRecord(module, id);
+  if (!rootRecord) return { nodes: [], edges: [] };
+  const rootKey = connectionKey(module, id);
+  const nodeCandidates = new Map<string, { module: ModuleKey; id: string; relation?: string }>();
+  const edges: ConnectionEdge[] = [];
+  const rootNode: ConnectionNode = { key: rootKey, module, id, title: displayName(rootRecord), subtitle: String(rootRecord.description ?? rootRecord.topic ?? ""), status: rootRecord.status, root: true };
+  nodeCandidates.set(rootKey, { module, id });
+
+  const addEdge = (sourceModule: string, sourceId: string, targetModule: string, targetId: string, relation: string, edgeKey: string) => {
+    if (!isModuleKey(sourceModule) || !isModuleKey(targetModule) || sourceId === targetId && sourceModule === targetModule) return;
+    const source = connectionKey(sourceModule, sourceId);
+    const target = connectionKey(targetModule, targetId);
+    nodeCandidates.set(source, { module: sourceModule, id: sourceId, relation });
+    nodeCandidates.set(target, { module: targetModule, id: targetId, relation });
+    edges.push({ key: edgeKey, source, target, relation });
+  };
+
+  const relations = await loadRelations(module, id);
+  relations.forEach((relation) => {
+    const sourceIsRoot = relation.source_type === module && relation.source_id === id;
+    const targetIsRoot = relation.target_type === module && relation.target_id === id;
+    if (sourceIsRoot) addEdge(module, id, relation.target_type, relation.target_id, relation.relation_type, relation.id);
+    else if (targetIsRoot) addEdge(relation.source_type, relation.source_id, module, id, relation.relation_type, relation.id);
+  });
+
+  if (module === "tasks") {
+    const children = await loadSubtasks(id);
+    children.forEach((child) => addEdge(module, id, "tasks", child.id, "SUBTASK_OF", `subtask:${child.id}`));
+    if (rootRecord.parent_task_id) addEdge("tasks", String(rootRecord.parent_task_id), module, id, "SUBTASK_OF", `parent:${rootRecord.parent_task_id}`);
+  }
+
+  const forwardLinks: Array<[string, ModuleKey]> = [
+    ["project_id", "projects"], ["task_id", "tasks"], ["event_id", "events"],
+    ["contact_id", "people"], ["ambassador_id", "ambassadors"], ["community_id", "communities"]
+  ];
+  forwardLinks.forEach(([field, targetModule]) => {
+    const targetId = rootRecord[field];
+    if (targetId && targetModule !== module) addEdge(module, id, targetModule, String(targetId), "CONTEXT", `context:${field}:${targetId}`);
+  });
+
+  const reverseLinks: Partial<Record<ModuleKey, Array<[ModuleKey, string]>>> = {
+    projects: [["tasks", "project_id"], ["interactions", "project_id"], ["commitments", "project_id"], ["events", "project_id"], ["content", "project_id"], ["documents", "project_id"], ["decisions", "project_id"], ["knowledge", "project_id"]],
+    tasks: [["documents", "task_id"], ["decisions", "task_id"], ["knowledge", "task_id"]],
+    people: [["commitments", "contact_id"], ["ambassadors", "contact_id"]],
+    interactions: [["commitments", "interaction_id"]],
+    events: [["content", "event_id"], ["documents", "event_id"], ["knowledge", "event_id"]],
+    communities: [["content", "community_id"]],
+    ambassadors: [["content", "ambassador_id"], ["documents", "ambassador_id"]]
+  };
+  const reverseRows = await Promise.all((reverseLinks[module] ?? []).map(async ([childModule, field]) => {
+    const rows = await loadRecords(childModule, { pageSize: 100 });
+    return { childModule, field, rows: rows.filter((row) => String(row[field] ?? "") === id) };
+  }));
+  reverseRows.forEach(({ childModule, field, rows }) => rows.forEach((row) => addEdge(module, id, childModule, row.id, "CONTEXT", `reverse:${childModule}:${field}:${row.id}`)));
+
+  const endpointKeys = [...nodeCandidates.keys()].filter((key) => key !== rootKey).slice(0, 30);
+  const endpointRecords = await Promise.all(endpointKeys.map(async (key) => {
+    const [endpointModule, endpointId] = key.split(":");
+    if (!isModuleKey(endpointModule) || !endpointId) return null;
+    const record = await loadRecord(endpointModule, endpointId);
+    return record ? { key, module: endpointModule, id: endpointId, record } : null;
+  }));
+  const nodes: ConnectionNode[] = [rootNode];
+  for (const endpoint of endpointRecords) {
+    if (!endpoint) continue;
+    const record = endpoint.record;
+    nodes.push({ key: endpoint.key, module: endpoint.module, id: endpoint.id, title: displayName(record), subtitle: String(record.description ?? record.topic ?? record.position ?? ""), status: record.status ?? record.ring ?? record.relationship_state });
+  }
+
+  const taskNodes = nodes.filter((node) => node.module === "tasks");
+  await Promise.all(taskNodes.map(async (node) => {
+    const children = await loadSubtasks(node.id);
+    node.readiness = calculateTaskReadiness(children);
+  }));
+  return { nodes, edges: edges.filter((edge, index, all) => all.findIndex((candidate) => candidate.key === edge.key) === index) };
 }
 
 export async function addAmbassadorContribution(ambassadorId: string, input: { type: string; base_xp: number; multiplier?: number; final_xp: number; date?: string; status?: string; review_note?: string }) {
