@@ -25,7 +25,7 @@ Every entity list has a detail route: `/<module>/<id>`. Global Quick Add and Ctr
 
 `component -> TanStack Query -> lib/data.ts -> Supabase table + activity_log`.
 
-Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-entity links go through `entity_relations`; contact participation is stored in owner-scoped `entity_contact_links`; task hierarchy uses `tasks.parent_task_id`; comments use owner-scoped `entity_comments`. The UI does not rely on a visual-only relationship: the map is a projection of persisted edges and records.
+Mutations add `owner_id`, timestamps and an Activity log entry. The canonical parent tree is stored in owner-scoped `entity_parent_links`: a project can contain projects and events, an event/project can contain tasks, a task can contain subtasks, and notes are attached to a project, event, task or subtask. Direct foreign keys (`project_id`, `event_id`, `task_id`, `parent_task_id`) remain denormalized query fields and are synchronized on writes. Additional many-to-many links go through `entity_relations`; contact participation is stored in `entity_contact_links`; comments use `entity_comments`. The UI does not rely on a visual-only relationship: the map is a projection of persisted edges and records.
 
 ## Decision rules
 
@@ -38,4 +38,5 @@ Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-
 - Task details expose subtasks, all comments and work-log interactions. Active child statuses produce a deterministic readiness percentage: Done 100%, In Progress 50%, Waiting 25%, Planned 10%, and blocked/inbox 0%; cancelled children are excluded.
 - The People module accepts a local `.md`/`.txt` directory import. Employees are normalized and deduplicated by email or phone/name before being written to Supabase; the source file is never committed. Every record can link one or more contacts through the same picker.
 - The Connections tab loads persisted edges and task hierarchy into a bounded, clickable map with status and readiness on each node.
+- A note cannot be created from the main flow without a parent context. The task detail page offers “Добавить заметку”, and the note appears in the same tree and on the connection map. Telegram uses `/task <project-or-event-id> | text` and `/note <task-id> | text` for the same invariant.
 - URL parameters are the source of truth for list query state, so reload and shared links preserve the current view.

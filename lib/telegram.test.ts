@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeTelegramHtml, isUuid, parseTelegramCommand, TELEGRAM_COMMANDS, truncateTelegramHtml, truncateTelegramText } from "./telegram";
+import { escapeTelegramHtml, isUuid, parseContextArgument, parseTelegramCommand, TELEGRAM_COMMANDS, truncateTelegramHtml, truncateTelegramText } from "./telegram";
 
 describe("Telegram commands", () => {
   it("parses bot usernames and arguments", () => {
@@ -10,6 +10,11 @@ describe("Telegram commands", () => {
   it("accepts only full UUIDs for task completion", () => {
     expect(isUuid("00000000-0000-4000-8000-000000000000")).toBe(true);
     expect(isUuid("not-a-task-id")).toBe(false);
+  });
+
+  it("parses a context id and text separated by a pipe", () => {
+    expect(parseContextArgument("project-id | Подтвердить спикера")).toEqual({ contextId: "project-id", text: "Подтвердить спикера" });
+    expect(parseContextArgument("только текст")).toBeNull();
   });
 
   it("keeps Telegram replies below the API limit", () => {
@@ -26,7 +31,7 @@ describe("Telegram commands", () => {
   });
 
   it("keeps the command menu descriptions in Cyrillic", () => {
-    expect(TELEGRAM_COMMANDS).toHaveLength(7);
+    expect(TELEGRAM_COMMANDS).toHaveLength(8);
     expect(TELEGRAM_COMMANDS.every((item) => item.description && !item.description.includes("?"))).toBe(true);
   });
 });

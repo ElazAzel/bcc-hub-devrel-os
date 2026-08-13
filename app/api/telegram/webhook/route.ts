@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { escapeTelegramHtml, isUuid, parseTelegramCommand, telegramDisplayName, truncateTelegramHtml } from "@/lib/telegram";
+import { escapeTelegramHtml, isUuid, parseContextArgument, parseTelegramCommand, telegramDisplayName, truncateTelegramHtml } from "@/lib/telegram";
 import {
   getTelegramAdminClient,
   hasTelegramWebhookSecret,
@@ -67,6 +67,7 @@ async function handleTelegramMessage(admin: ReturnType<typeof getTelegramAdminCl
 
   if (!command || command.name === "help") return sendMessage(chatId, helpText());
   if (command.name === "today") return sendToday(admin, chatId, connection.owner_id);
+  if (command.name === "contexts") return sendContexts(admin, chatId, connection.owner_id);
   if (command.name === "tasks") return sendTasks(admin, chatId, connection.owner_id);
   if (command.name === "task") return createTask(admin, chatId, connection.owner_id, command.argument, from);
   if (command.name === "note") return createNote(admin, chatId, connection.owner_id, command.argument, from);
@@ -84,13 +85,13 @@ async function connectChat(admin: ReturnType<typeof getTelegramAdminClient> & ob
     p_last_name: from?.last_name ?? null
   });
   if (error || !data?.[0]?.connected) return sendMessage(chatId, "Код недействителен или уже использован. Создай новый код в Настройках BCC HUB.");
-  return sendMessage(chatId, "<b>Telegram подключён</b> к твоему рабочему пространству.\n\n<b>Команды</b>\n<code>/help</code> — команды\n<code>/task текст</code> — создать задачу\n<code>/note текст</code> — сохранить заметку\n<code>/today</code> — фокус на сегодня");
+  return sendMessage(chatId, "<b>Telegram подключён</b> к твоему рабочему пространству.\n\n<b>Команды</b>\n<code>/help</code> — команды\n<code>/task полный-ID-проекта-или-события | текст</code> — создать задачу\n<code>/note полный-ID-задачи | текст</code> — сохранить заметку\n<code>/today</code> — фокус на сегодня");
 }
 
 async function sendTasks(admin: ReturnType<typeof getTelegramAdminClient> & object, chatId: number, ownerId: string) {
   const { data, error } = await admin.from("tasks").select("id,title,status,due_date,priority").eq("owner_id", ownerId).is("archived_at", null).not("status", "in", "(Done,Cancelled)").order("due_date", { ascending: true, nullsFirst: false }).limit(10);
   if (error) return sendMessage(chatId, "Не удалось загрузить задачи. Попробуй ещё раз.");
-  if (!data?.length) return sendMessage(chatId, "Активных задач нет. Можно создать первую командой /task текст.");
+  if (!data?.length) return sendMessage(chatId, "Активных задач нет. Создай задачу внутри проекта или события: /task ID | текст.");
   const lines = data.map((task, index) => `${index + 1}. <b>${escapeTelegramHtml(task.title)}</b>${task.due_date ? ` — срок <code>${escapeTelegramHtml(task.due_date)}</code>` : ""}\n   ${escapeTelegramHtml(task.status || "Inbox")} · ${escapeTelegramHtml(task.priority || "Normal")}\n   ID: <code>${escapeTelegramHtml(task.id)}</code>`);
   return sendMessage(chatId, `<b>Активные задачи</b>:\n\n${lines.join("\n\n")}\n\nЧтобы закрыть задачу: <code>/done полный-ID</code>`);
 }
@@ -108,18 +109,25 @@ async function sendToday(admin: ReturnType<typeof getTelegramAdminClient> & obje
 }
 
 async function createTask(admin: ReturnType<typeof getTelegramAdminClient> & object, chatId: number, ownerId: string, argument: string, from: NonNullable<TelegramUpdate["message"]>["from"]) {
-  const title = argument.trim();
-  if (!title) return sendMessage(chatId, "Напиши текст задачи: /task Подтвердить спикера");
-  const { data, error } = await admin.from("tasks").insert({ owner_id: ownerId, title: title.slice(0, 500), status: "Inbox", priority: "Normal", source_type: "Telegram", source_label: telegramDisplayName(from ?? {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select("id,title").single();
+  const parsed = parseContextArgument(argument);
+  if (!parsed || !isUuid(parsed.contextId)) return sendMessage(chatId, "Формат: /task полный-ID-проекта-или-события | текст задачи");
+  const [{ data: project }, { data: event }] = await Promise.all([
+    admin.from("projects").select("id").eq("owner_id", ownerId).eq("id", parsed.contextId).maybeSingle(),
+    admin.from("events").select("id,project_id").eq("owner_id", ownerId).eq("id", parsed.contextId).maybeSingle()
+  ]);
+  if (!project && !event) return sendMessage(chatId, "Проект или событие с таким ID не найдено. Получи ID в BCC HUB или командах списка.");
+  const { data, error } = await admin.from("tasks").insert({ owner_id: ownerId, title: parsed.text.slice(0, 500), status: "Inbox", priority: "Normal", project_id: project?.id ?? event?.project_id ?? null, event_id: event?.id ?? null, source_type: "Telegram", source_label: telegramDisplayName(from ?? {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select("id,title").single();
   if (error || !data) return sendMessage(chatId, "Не удалось создать задачу. Попробуй ещё раз.");
   return sendMessage(chatId, `<b>Задача сохранена</b>\n${escapeTelegramHtml(data.title)}\n\nID: <code>${escapeTelegramHtml(data.id)}</code>`);
 }
 
 async function createNote(admin: ReturnType<typeof getTelegramAdminClient> & object, chatId: number, ownerId: string, argument: string, from: NonNullable<TelegramUpdate["message"]>["from"]) {
-  const situation = argument.trim();
-  if (!situation) return sendMessage(chatId, "Напиши заметку: /note После встречи нужно отправить follow-up");
-  const title = situation.length > 80 ? `${situation.slice(0, 77).trimEnd()}…` : situation;
-  const { data, error } = await admin.from("knowledge_cases").insert({ owner_id: ownerId, title, situation, trigger: "Telegram", people: telegramDisplayName(from ?? {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select("id,title").single();
+  const parsed = parseContextArgument(argument);
+  if (!parsed || !isUuid(parsed.contextId)) return sendMessage(chatId, "Формат: /note полный-ID-задачи | текст заметки");
+  const { data: task } = await admin.from("tasks").select("id,title,project_id,event_id").eq("owner_id", ownerId).eq("id", parsed.contextId).maybeSingle();
+  if (!task) return sendMessage(chatId, "Задача с таким ID не найдена. Получи полный ID командой /tasks.");
+  const title = parsed.text.length > 80 ? `${parsed.text.slice(0, 77).trimEnd()}…` : parsed.text;
+  const { data, error } = await admin.from("knowledge_cases").insert({ owner_id: ownerId, title, situation: parsed.text, task_id: task.id, trigger: "Telegram", people: telegramDisplayName(from ?? {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select("id,title").single();
   if (error || !data) return sendMessage(chatId, "Не удалось сохранить заметку. Попробуй ещё раз.");
   return sendMessage(chatId, `<b>Заметка сохранена в Память</b>\n${escapeTelegramHtml(data.title)}\n\nID: <code>${escapeTelegramHtml(data.id)}</code>`);
 }
@@ -132,7 +140,18 @@ async function completeTask(admin: ReturnType<typeof getTelegramAdminClient> & o
 }
 
 function helpText() {
-  return "<b>Команды BCC HUB</b>\n\n<code>/task текст</code> — создать задачу\n<code>/note текст</code> — сохранить заметку в Память\n<code>/tasks</code> — активные задачи\n<code>/today</code> — просроченное и ближайшее\n<code>/done полный-ID</code> — закрыть задачу\n<code>/help</code> — эта подсказка";
+  return "<b>Команды BCC HUB</b>\n\n<code>/contexts</code> — проекты и события для привязки\n<code>/task полный-ID-проекта-или-события | текст</code> — создать задачу\n<code>/note полный-ID-задачи | текст</code> — сохранить заметку в Память\n<code>/tasks</code> — активные задачи\n<code>/today</code> — просроченное и ближайшее\n<code>/done полный-ID</code> — закрыть задачу\n<code>/help</code> — эта подсказка";
+}
+
+async function sendContexts(admin: ReturnType<typeof getTelegramAdminClient> & object, chatId: number, ownerId: string) {
+  const [{ data: projects }, { data: events }] = await Promise.all([
+    admin.from("projects").select("id,title").eq("owner_id", ownerId).is("archived_at", null).order("updated_at", { ascending: false }).limit(10),
+    admin.from("events").select("id,title,date_start").eq("owner_id", ownerId).is("archived_at", null).order("date_start", { ascending: false }).limit(10)
+  ]);
+  const projectLines = (projects ?? []).map((item) => `• <b>Проект:</b> ${escapeTelegramHtml(item.title)}\n  ID: <code>${escapeTelegramHtml(item.id)}</code>`);
+  const eventLines = (events ?? []).map((item) => `• <b>Событие:</b> ${escapeTelegramHtml(item.title)}${item.date_start ? ` — ${escapeTelegramHtml(item.date_start)}` : ""}\n  ID: <code>${escapeTelegramHtml(item.id)}</code>`);
+  if (!projectLines.length && !eventLines.length) return sendMessage(chatId, "Пока нет проектов или событий. Создай контекст в BCC HUB.");
+  return sendMessage(chatId, `<b>Контексты для новых задач</b>\n\n${[...projectLines, ...eventLines].join("\n\n")}\n\nПример: <code>/task ID | Подтвердить спикера</code>`);
 }
 
 async function sendMessage(chatId: number, text: string) {

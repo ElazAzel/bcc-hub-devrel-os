@@ -31,7 +31,7 @@ To force local mode while keeping Supabase credentials in `.env.local`, set `NEX
 
 ## Supabase setup
 
-Apply migrations in filename order: `202608100001_initial.sql`, `202608100002_optimization.sql`, `202608130001_comments_relationships.sql`, then `202608130002_contact_directory.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The optimization migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`; the latest migration adds the secure employee directory and contact links. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
+Apply migrations in filename order: `202608100001_initial.sql`, `202608100002_optimization.sql`, `202608130001_comments_relationships.sql`, `202608130002_contact_directory.sql`, then `202608130003_entity_hierarchy.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The optimization migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`; the latest migrations add the secure employee directory, contact links and the canonical project/event/task/note hierarchy. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
 
 ## Telegram assistant
 
@@ -45,7 +45,7 @@ APP_URL=https://bcc-hub-devrel-os.vercel.app npm run telegram:setup
 
 Команда также обновляет встроенное меню Telegram через `setMyCommands`. Описания команд отправляются как UTF-8, поэтому кириллица не превращается в `????`.
 
-Then open **Настройки → Telegram-ассистент**, create a code and send `/start КОД` to `@DevRelAssistbot`. Available commands: `/task`, `/note`, `/tasks`, `/today`, `/done`, `/help`. The webhook accepts only Telegram requests with the configured secret header. Revoke any previously exposed bot token through BotFather before adding the replacement.
+Then open **Настройки → Telegram-ассистент**, create a code and send `/start КОД` to `@DevRelAssistbot`. Available commands: `/contexts`, `/task ID_ПРОЕКТА_ИЛИ_СОБЫТИЯ | текст`, `/note ID_ЗАДАЧИ | текст`, `/tasks`, `/today`, `/done`, `/help`. The webhook accepts only Telegram requests with the configured secret header. Revoke any previously exposed bot token through BotFather before adding the replacement.
 
 ## Commands
 

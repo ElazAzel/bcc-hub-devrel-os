@@ -14,7 +14,7 @@ const moduleNames: Record<ModuleKey, { label: string; singular: string; descript
   "tech-radar": { label: "Техрадар", singular: "технологию", description: "Технологии BCC HUB, их место, рекомендации и изменения." },
   documents: { label: "Документы", singular: "документ", description: "Индекс документов и внешних источников." },
   decisions: { label: "Решения", singular: "решение", description: "Лог решений с контекстом, вариантами и последствиями." },
-  knowledge: { label: "Память", singular: "кейс", description: "Память о том, что сработало, а что нет." }
+  knowledge: { label: "Память", singular: "заметку", description: "Заметки, решения и опыт, привязанные к рабочему контексту." }
 };
 
 const values: Record<string, string> = {

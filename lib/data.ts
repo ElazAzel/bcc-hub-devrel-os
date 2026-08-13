@@ -2,9 +2,10 @@ import { getSupabaseBrowserClient } from "./supabase/client";
 import { SEED_DATA } from "./seed";
 import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./search";
 import { toDataError } from "./errors";
-import { displayName, getModule, type AnyRecord, type ConnectionEdge, type ConnectionNode, type EntityComment, type EntityContactLink, type EntityRelation, type EmployeeImportRow, type ModuleKey, type RecordListQuery, type RecordPage, type TaskReadiness, type WorkspaceSearchResult } from "./types";
+import { displayName, getModule, type AnyRecord, type ConnectionEdge, type ConnectionNode, type EntityComment, type EntityContactLink, type EntityParentLink, type EntityRelation, type EmployeeImportRow, type ModuleKey, type RecordListQuery, type RecordPage, type TaskReadiness, type WorkspaceSearchResult } from "./types";
 import { calculateTaskReadiness } from "./readiness";
 import { employeeIdentity } from "./employee-import";
+import { allowedParentTypes, hierarchyTitle, isHierarchyNodeType, parentSelectionForRecord, recordFieldsForParent, relationForParent, type HierarchyNodeType, type HierarchyPathItem, type ParentSelection } from "./hierarchy";
 
 const supabase = getSupabaseBrowserClient();
 export const isCloudMode = Boolean(supabase);
@@ -38,19 +39,19 @@ const COMMON_COLUMNS = ["id", "owner_id", "created_at", "updated_at", "archived_
 // the list derived from the module schema instead of sending a shared union of
 // columns to every table (which turns a valid authenticated request into 400).
 const MODULE_QUERY_EXTRAS: Partial<Record<ModuleKey, string[]>> = {
-  projects: ["health_score", "health_state", "last_activity_at", "project_type", "goal", "expected_result", "actual_result"],
-  tasks: ["project_id", "parent_task_id", "source_date", "requested_by_contact_id", "expected_result", "blocker", "actual_result", "retrospective", "completed_at"],
+  projects: ["parent_project_id", "health_score", "health_state", "last_activity_at", "project_type", "goal", "expected_result", "actual_result"],
+  tasks: ["project_id", "event_id", "parent_task_id", "source_date", "requested_by_contact_id", "expected_result", "blocker", "actual_result", "retrospective", "completed_at"],
   people: ["name", "phone", "department", "contact_kind", "relationship_score", "relationship_state", "last_interaction_at"],
   organizations: ["notes"],
-  interactions: ["project_id", "event_id", "what_i_said", "what_they_said", "follow_up_date"],
-  commitments: ["contact_id", "project_id", "interaction_id"],
+  interactions: ["project_id", "event_id", "task_id", "what_i_said", "what_they_said", "follow_up_date"],
+  commitments: ["contact_id", "project_id", "event_id", "task_id", "interaction_id"],
   events: ["project_id", "format", "capacity", "registrations", "confirmed", "attended", "nps", "budget_planned", "budget_actual"],
-  content: ["author_contact_id", "ambassador_id", "project_id", "event_id", "community_id", "published_at", "views", "reach", "likes", "comments", "shares"],
+  content: ["author_contact_id", "ambassador_id", "project_id", "event_id", "task_id", "community_id", "published_at", "views", "reach", "likes", "comments", "shares"],
   communities: ["owner_contact_id", "last_activity_at"],
   ambassadors: ["contact_id", "start_date", "training_progress", "last_contribution_at"],
   "tech-radar": ["slug", "domain", "rationale", "owner_contact_id"],
   documents: ["storage_path", "project_id", "task_id", "event_id", "contact_id", "ambassador_id", "version", "last_updated_at"],
-  decisions: ["date", "problem", "options", "consequences", "review_date", "project_id", "task_id"],
+  decisions: ["date", "problem", "options", "consequences", "review_date", "project_id", "task_id", "event_id"],
   knowledge: ["trigger", "people", "actions", "communication", "decision", "tags", "project_id", "task_id", "event_id"]
 };
 
@@ -201,25 +202,175 @@ async function logActivities(activities: Array<{ action: string; entityType: str
   window.localStorage.setItem(key, JSON.stringify([...next, ...rows].slice(0, 200)));
 }
 
+const HIERARCHY_KEY = "bcc-hub:entity-parent-links";
+
+function readLocalParentLinks(): EntityParentLink[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(window.localStorage.getItem(HIERARCHY_KEY) ?? "[]") as EntityParentLink[]; } catch { return []; }
+}
+
+function writeLocalParentLinks(rows: EntityParentLink[]) {
+  window.localStorage.setItem(HIERARCHY_KEY, JSON.stringify(rows));
+  window.dispatchEvent(new CustomEvent("bcc:data-changed", { detail: "entity-parent-links" }));
+}
+
+function localHierarchyLinks(): EntityParentLink[] {
+  const modules: HierarchyNodeType[] = ["projects", "events", "tasks", "interactions", "commitments", "content", "documents", "decisions", "knowledge"];
+  const derived = modules.flatMap((module) => readLocal(module).flatMap((record) => {
+    const parent = parentSelectionForRecord(module, record);
+    return parent.parentType && parent.parentId ? [{ id: `derived:${module}:${record.id}`, owner_id: ownerKey(), child_type: module, child_id: record.id, parent_type: parent.parentType, parent_id: parent.parentId, relation_type: relationForParent(module, parent.parentType), created_at: record.updated_at }] : [];
+  }));
+  const explicit = readLocalParentLinks();
+  const explicitChildren = new Set(explicit.map((row) => `${row.child_type}:${row.child_id}`));
+  return [...explicit, ...derived.filter((row) => !explicitChildren.has(`${row.child_type}:${row.child_id}`))];
+}
+
+export async function loadEntityParentLinks(filters: { childType?: HierarchyNodeType; childId?: string; parentType?: HierarchyNodeType; parentId?: string } = {}): Promise<EntityParentLink[]> {
+  if (!supabase) {
+    return localHierarchyLinks().filter((row) =>
+      (!filters.childType || row.child_type === filters.childType) &&
+      (!filters.childId || row.child_id === filters.childId) &&
+      (!filters.parentType || row.parent_type === filters.parentType) &&
+      (!filters.parentId || row.parent_id === filters.parentId)
+    );
+  }
+  let request = supabase.from("entity_parent_links").select("*").order("created_at", { ascending: true }).limit(500);
+  if (filters.childType) request = request.eq("child_type", filters.childType);
+  if (filters.childId) request = request.eq("child_id", filters.childId);
+  if (filters.parentType) request = request.eq("parent_type", filters.parentType);
+  if (filters.parentId) request = request.eq("parent_id", filters.parentId);
+  const { data, error } = await request;
+  if (error) throw toDataError(error);
+  return (data ?? []) as EntityParentLink[];
+}
+
+export async function loadEntityParentLink(childType: HierarchyNodeType, childId: string): Promise<EntityParentLink | null> {
+  return (await loadEntityParentLinks({ childType, childId }))[0] ?? null;
+}
+
+async function assertHierarchyRecord(type: HierarchyNodeType, id: string, label: string) {
+  const record = await loadRecord(type, id);
+  if (!record) throw new Error(`${label} не найдена или недоступна`);
+}
+
+async function ensureNoHierarchyCycle(childType: HierarchyNodeType, childId: string, parentType: HierarchyNodeType, parentId: string) {
+  let currentType = parentType;
+  let currentId = parentId;
+  const visited = new Set<string>();
+  for (let depth = 0; depth < 30; depth += 1) {
+    const key = `${currentType}:${currentId}`;
+    if (visited.has(key)) throw new Error("В иерархии обнаружен цикл");
+    visited.add(key);
+    if (currentType === childType && currentId === childId) throw new Error("Запись нельзя поместить внутрь самой себя или своего потомка");
+    const parent = await loadEntityParentLink(currentType, currentId);
+    if (!parent || !isHierarchyNodeType(parent.parent_type)) return;
+    currentType = parent.parent_type;
+    currentId = parent.parent_id;
+  }
+  throw new Error("Иерархия слишком глубокая или содержит цикл");
+}
+
+export async function setEntityParent(childType: HierarchyNodeType, childId: string, parent: ParentSelection) {
+  if (!parent.parentType || !parent.parentId) {
+    await clearEntityParent(childType, childId);
+    return;
+  }
+  if (!allowedParentTypes(childType).includes(parent.parentType)) throw new Error("Этот тип записи нельзя вложить в выбранный контекст");
+  if (childType === parent.parentType && childId === parent.parentId) throw new Error("Запись нельзя связать сама с собой");
+  await assertHierarchyRecord(parent.parentType, parent.parentId, "Родительская запись");
+  await assertHierarchyRecord(childType, childId, "Дочерняя запись");
+  await ensureNoHierarchyCycle(childType, childId, parent.parentType, parent.parentId);
+  const link = { child_type: childType, child_id: childId, parent_type: parent.parentType, parent_id: parent.parentId, relation_type: relationForParent(childType, parent.parentType) };
+  if (!supabase) {
+    const rows = readLocalParentLinks().filter((row) => !(row.child_type === childType && row.child_id === childId));
+    writeLocalParentLinks([{ id: crypto.randomUUID(), owner_id: ownerKey(), created_at: new Date().toISOString(), ...link }, ...rows]);
+  } else {
+    const user = await supabase.auth.getUser();
+    if (user.error) throw toDataError(user.error);
+    if (!user.data.user) throw new Error("Нужна авторизация");
+    const { error: deleteError } = await supabase.from("entity_parent_links").delete().eq("child_type", childType).eq("child_id", childId);
+    if (deleteError) throw toDataError(deleteError);
+    const { error: insertError } = await supabase.from("entity_parent_links").insert({ ...link, owner_id: user.data.user.id });
+    if (insertError) throw toDataError(insertError);
+  }
+}
+
+export async function clearEntityParent(childType: HierarchyNodeType, childId: string) {
+  if (!supabase) {
+    writeLocalParentLinks(readLocalParentLinks().filter((row) => !(row.child_type === childType && row.child_id === childId)));
+    return;
+  }
+  const { error } = await supabase.from("entity_parent_links").delete().eq("child_type", childType).eq("child_id", childId);
+  if (error) throw toDataError(error);
+}
+
+async function syncEntityParent(module: ModuleKey, record: AnyRecord) {
+  if (!allowedParentTypes(module).length || !isHierarchyNodeType(module)) return;
+  const selection = parentSelectionForRecord(module, record);
+  if (selection.parentType && selection.parentId) await setEntityParent(module, record.id, selection);
+  else await clearEntityParent(module, record.id);
+}
+
+async function inheritProjectContext(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (input.project_id || (!input.event_id && !input.task_id && !input.parent_task_id)) return input;
+  const parentType: ModuleKey = input.event_id ? "events" : "tasks";
+  const parentId = String(input.event_id ?? input.task_id ?? input.parent_task_id);
+  const parent = await loadRecord(parentType, parentId);
+  return parent?.project_id ? { ...input, project_id: parent.project_id } : input;
+}
+
+export async function loadHierarchyPath(module: HierarchyNodeType, id: string): Promise<HierarchyPathItem[]> {
+  const path: HierarchyPathItem[] = [];
+  let currentType = module;
+  let currentId = id;
+  const visited = new Set<string>();
+  for (let depth = 0; depth < 30; depth += 1) {
+    const key = `${currentType}:${currentId}`;
+    if (visited.has(key)) break;
+    visited.add(key);
+    const record = await loadRecord(currentType, currentId);
+    if (!record) break;
+    const parent = await loadEntityParentLink(currentType, currentId);
+    path.unshift({ module: currentType, id: currentId, title: hierarchyTitle(record), relation: parent?.relation_type });
+    if (!parent || !isHierarchyNodeType(parent.parent_type)) break;
+    currentType = parent.parent_type;
+    currentId = parent.parent_id;
+  }
+  return path;
+}
+
+export async function loadHierarchyChildren(parentType: HierarchyNodeType, parentId: string): Promise<Array<HierarchyPathItem & { relation: string; status: string | null }>> {
+  const links = await loadEntityParentLinks({ parentType, parentId });
+  const children = await Promise.all(links.filter((link) => isHierarchyNodeType(link.child_type)).map(async (link) => {
+    const childType = link.child_type as HierarchyNodeType;
+    const record = await loadRecord(childType, link.child_id);
+    return record ? { module: childType, id: link.child_id, title: hierarchyTitle(record), relation: link.relation_type, status: record.status ?? null } : null;
+  }));
+  return children.filter((child): child is HierarchyPathItem & { relation: string; status: string | null } => Boolean(child));
+}
+
 export async function createRecords(module: ModuleKey, inputs: Array<Record<string, unknown>>): Promise<AnyRecord[]> {
   const config = getModule(module);
   if (!config) throw new Error("Неизвестный раздел");
   if (!inputs.length) return [];
   const timestamp = new Date().toISOString();
+  const normalizedInputs = await Promise.all(inputs.map((input) => inheritProjectContext(input)));
   if (!supabase) {
-    const records = inputs.map((input) => ({ id: crypto.randomUUID(), owner_id: ownerKey(), created_at: timestamp, updated_at: timestamp, ...input }));
+    const records = normalizedInputs.map((input) => ({ id: crypto.randomUUID(), owner_id: ownerKey(), created_at: timestamp, updated_at: timestamp, ...input }));
     writeLocal(module, [...records, ...readLocal(module)]);
     await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
+    await Promise.all(records.map((record) => syncEntityParent(module, record)));
     return records;
   }
   const user = await supabase.auth.getUser();
   if (user.error) throw toDataError(user.error);
   if (!user.data.user) throw new Error("Нужна авторизация");
   const ownerId = user.data.user.id;
-  const { data, error } = await supabase.from(config.table).insert(inputs.map((input) => ({ ...input, owner_id: ownerId, created_at: timestamp, updated_at: timestamp }))).select();
+  const { data, error } = await supabase.from(config.table).insert(normalizedInputs.map((input) => ({ ...input, owner_id: ownerId, created_at: timestamp, updated_at: timestamp }))).select();
   if (error) throw toDataError(error);
   const records = (data ?? []) as AnyRecord[];
   await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
+  await Promise.all(records.map((record) => syncEntityParent(module, record)));
   return records;
 }
 
@@ -248,11 +399,13 @@ export async function updateRecord(module: ModuleKey, id: string, input: Record<
     const updated = rows.find((row) => row.id === id);
     if (!updated) throw new Error("Запись не найдена");
     await logActivity("entity updated", module, id, `${displayName(updated)} обновлено`);
+    await syncEntityParent(module, updated);
     return updated;
   }
   const { data, error } = await supabase.from(config.table).update({ ...input, updated_at: timestamp }).eq("id", id).select().single();
   if (error) throw toDataError(error);
   await logActivity("entity updated", module, id, `${displayName(data as AnyRecord)} обновлено`);
+  await syncEntityParent(module, data as AnyRecord);
   return data as AnyRecord;
 }
 
@@ -315,7 +468,14 @@ export async function loadSubtasks(parentTaskId: string): Promise<AnyRecord[]> {
 }
 
 export async function createSubtask(parentTaskId: string, input: Record<string, unknown>): Promise<AnyRecord> {
-  return createRecord("tasks", { ...input, parent_task_id: parentTaskId });
+  const parent = await loadRecord("tasks", parentTaskId);
+  if (!parent) throw new Error("Родительская задача не найдена");
+  return createRecord("tasks", {
+    ...input,
+    parent_task_id: parentTaskId,
+    project_id: parent.project_id ?? null,
+    event_id: parent.event_id ?? null
+  });
 }
 
 export async function loadTaskReadiness(taskId: string): Promise<TaskReadiness> {
@@ -484,6 +644,19 @@ export async function loadConnectionGraph(module: ModuleKey, id: string): Promis
 
   const contactLinks = await loadEntityContactLinks(module, id);
   contactLinks.forEach((link) => addEdge(module, id, "people", link.contact_id, link.role ?? "PARTICIPANT", `contact:${link.id}`));
+
+  if (isHierarchyNodeType(module)) {
+    const [parentLinks, childLinks] = await Promise.all([
+      loadEntityParentLinks({ childType: module, childId: id }),
+      loadEntityParentLinks({ parentType: module, parentId: id })
+    ]);
+    parentLinks.forEach((link) => {
+      if (isHierarchyNodeType(link.parent_type)) addEdge(link.parent_type, link.parent_id, module, id, link.relation_type, `hierarchy-parent:${link.id}`);
+    });
+    childLinks.forEach((link) => {
+      if (isHierarchyNodeType(link.child_type)) addEdge(module, id, link.child_type, link.child_id, link.relation_type, `hierarchy-child:${link.id}`);
+    });
+  }
 
   if (module === "tasks") {
     const children = await loadSubtasks(id);
