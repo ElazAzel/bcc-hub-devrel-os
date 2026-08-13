@@ -31,7 +31,7 @@ To force local mode while keeping Supabase credentials in `.env.local`, set `NEX
 
 ## Supabase setup
 
-Apply migrations in filename order: `202608100001_initial.sql`, `202608100002_optimization.sql`, `202608130001_comments_relationships.sql`, `202608130002_contact_directory.sql`, then `202608130003_entity_hierarchy.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The optimization migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`; the latest migrations add the secure employee directory, contact links and the canonical project/event/task/note hierarchy. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
+Apply migrations in filename order: `202608100001_initial.sql`, `202608100002_optimization.sql`, `202608130001_comments_relationships.sql`, `202608130002_contact_directory.sql`, `202608130003_entity_hierarchy.sql`, then `202608130004_sync_entity_hierarchy.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The optimization migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`; the latest migrations add the secure employee directory, contact links and the canonical project/event/task/note hierarchy with database-side synchronization. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
 
 ## Telegram assistant
 

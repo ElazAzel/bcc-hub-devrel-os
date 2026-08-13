@@ -39,4 +39,5 @@ Mutations add `owner_id`, timestamps and an Activity log entry. The canonical pa
 - The People module accepts a local `.md`/`.txt` directory import. Employees are normalized and deduplicated by email or phone/name before being written to Supabase; the source file is never committed. Every record can link one or more contacts through the same picker.
 - The Connections tab loads persisted edges and task hierarchy into a bounded, clickable map with status and readiness on each node.
 - A note cannot be created from the main flow without a parent context. The task detail page offers “Добавить заметку”, and the note appears in the same tree and on the connection map. Telegram uses `/task <project-or-event-id> | text` and `/note <task-id> | text` for the same invariant.
+- A database trigger mirrors direct server-side writes into `entity_parent_links`, so the hierarchy remains correct even when a record is created by Telegram or another trusted backend job.
 - URL parameters are the source of truth for list query state, so reload and shared links preserve the current view.
