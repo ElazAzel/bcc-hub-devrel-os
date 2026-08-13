@@ -71,6 +71,17 @@ export type EntityContactLink = {
   created_at: string;
 };
 
+export type EntityParentLink = {
+  id: string;
+  owner_id?: string;
+  child_type: string;
+  child_id: string;
+  parent_type: string;
+  parent_id: string;
+  relation_type: string;
+  created_at: string;
+};
+
 export type EmployeeImportRow = {
   name: string;
   first_name: string;

@@ -4,15 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Archive, ArrowLeft, CalendarClock, CheckCircle2, ChevronRight, Edit3, ExternalLink, Link2, MessageCircle, Network, Plus, Save, Sparkles, UserRound } from "lucide-react";
-import { addAmbassadorContribution, addComment, addRelation, addWorkLog, archiveRecord, createSubtask, loadActivity, loadComments, loadConnectionGraph, loadEntityContacts, loadRecord, loadRecords, loadSubtasks, replaceEntityContacts, updateRecord } from "@/lib/data";
+import { addAmbassadorContribution, addComment, addRelation, addWorkLog, archiveRecord, createSubtask, loadActivity, loadComments, loadConnectionGraph, loadEntityContacts, loadHierarchyChildren, loadHierarchyPath, loadRecord, loadRecords, loadSubtasks, replaceEntityContacts, updateRecord } from "@/lib/data";
 import { fieldLabel, formatDateRu, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { calculateProjectHealth } from "@/lib/health";
 import { calculateTaskReadiness, readinessLabel } from "@/lib/readiness";
 import { displayName, getModule, type AnyRecord, type ConnectionNode, type EntityComment, type FieldConfig, type ModuleKey, type TaskReadiness } from "@/lib/types";
+import { hierarchySupports, hierarchyTypeLabel, parentSelectionForRecord, recordFieldsForParent, type HierarchyChild, type HierarchyNodeType, type HierarchyPathItem, type ParentSelection } from "@/lib/hierarchy";
 import { PageHeader } from "./page-header";
 import { StatusChip } from "./status-chip";
 import { Button, EmptyState, ErrorState, Field, Input, LoadingState, Modal, Select, Textarea } from "./ui";
 import { ContactPicker } from "./contact-picker";
+import { ContextPicker } from "./context-picker";
+import { CreateNoteModal } from "./create-note-modal";
 
 type DetailView = "overview" | "connections";
 type ConnectionGraph = Awaited<ReturnType<typeof loadConnectionGraph>>;
@@ -29,6 +32,8 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
   const [readiness, setReadiness] = useState<TaskReadiness | null>(null);
   const [health, setHealth] = useState<{ score: number; state: string; reasons: string[] } | null>(null);
   const [graph, setGraph] = useState<ConnectionGraph | null>(null);
+  const [hierarchyPath, setHierarchyPath] = useState<HierarchyPathItem[]>([]);
+  const [hierarchyChildren, setHierarchyChildren] = useState<HierarchyChild[]>([]);
   const [view, setView] = useState<DetailView>("overview");
   const [loading, setLoading] = useState(true);
   const [graphLoading, setGraphLoading] = useState(false);
@@ -40,6 +45,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
   const [relationOpen, setRelationOpen] = useState(false);
   const [workLogOpen, setWorkLogOpen] = useState(false);
   const [subtaskOpen, setSubtaskOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -64,6 +70,14 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
       setActivity(log);
       setComments(nextComments);
       setContacts(nextContacts);
+      if (hierarchySupports(module)) {
+        const [path, children] = await Promise.all([loadHierarchyPath(module as HierarchyNodeType, id), loadHierarchyChildren(module as HierarchyNodeType, id)]);
+        setHierarchyPath(path);
+        setHierarchyChildren(children);
+      } else {
+        setHierarchyPath([]);
+        setHierarchyChildren([]);
+      }
       if (module === "tasks") {
         const children = await loadSubtasks(id);
         setSubtasks(children);
@@ -102,6 +116,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
   return <div>
     <Link href={`/${module}`} className="mb-5 inline-flex min-h-10 items-center gap-2 text-sm font-medium text-[#74747C] hover:text-bcc-deep"><ArrowLeft size={16} />Назад к {copy.label.toLowerCase()}</Link>
     <PageHeader eyebrow={copy.singular} title={displayName(record)} description={String(record.description ?? record.notes ?? record.summary ?? record.situation ?? "Рабочая запись и её контекст.")} action={{ label: "Редактировать", onClick: () => setEditOpen(true) }} />
+    {hierarchyPath.length > 1 && <HierarchyBreadcrumbs path={hierarchyPath} />}
 
     <div className="mb-6 flex min-h-11 gap-1 overflow-x-auto rounded-2xl border border-bcc-border bg-white p-1 shadow-card" role="tablist" aria-label="Разделы записи">
       <TabButton active={view === "overview"} onClick={() => setView("overview")} icon={<Edit3 size={15} />}>Обзор</TabButton>
@@ -110,6 +125,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
 
     {view === "connections" ? <ConnectionsPanel graph={graph} loading={graphLoading} onRetry={refreshGraph} /> : <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]"><div className="space-y-6">
       <section className="surface p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex flex-wrap items-center gap-2"><StatusChip value={record.status ?? record.ring ?? record.change_state ?? record.relationship_state} /><StatusChip value={record.priority} tone="brand" />{record.direction && <span className="chip">{ru(record.direction)}</span>}{record.due_date && <span className="chip"><CalendarClock size={13} />{formatDateRu(record.due_date)}</span>}</div><div className="flex flex-wrap gap-1"><Button variant="ghost" onClick={() => setRelationOpen(true)}><Link2 size={16} />Связать</Button><Button variant="ghost" onClick={() => setArchiveOpen(true)}><Archive size={16} />Архив</Button></div></div>{health && <HealthPanel details={health} />}{module === "tasks" && readiness && <TaskReadinessPanel readiness={readiness} />}{module === "tech-radar" && <RadarPanel record={record} />}{module === "events" && <EventReadiness record={record} />}{module === "people" && <RelationshipPanel record={record} />}{module === "ambassadors" && <AmbassadorPanel record={record} onUpdate={async (xp) => { await addAmbassadorContribution(id, { type: "Manual contribution", base_xp: xp, final_xp: xp, status: "Approved" }); await refresh(); }} />}</section>
+      {hierarchySupports(module) && <HierarchySection module={module} childrenRows={hierarchyChildren} onAddNote={() => setNoteOpen(true)} />}
       {module === "tasks" && <SubtasksSection subtasks={subtasks} readiness={readiness ?? calculateTaskReadiness([])} onAdd={() => setSubtaskOpen(true)} onChanged={refresh} />}
       {module === "tasks" && <WorkLogSection activity={activity} onAdd={() => setWorkLogOpen(true)} />}
       {module !== "people" && <ParticipantsSection contacts={contacts} error={contactsError} onChanged={async (ids) => { await replaceEntityContacts(module, id, ids); setContacts(await loadEntityContacts(module, id)); }} />}
@@ -121,12 +137,24 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
     <EditModal open={editOpen} onClose={() => setEditOpen(false)} module={module} record={record} onSaved={(updated) => { setRecord(updated); setEditOpen(false); void refresh(); }} />
     <RelationModal open={relationOpen} onClose={() => { setRelationOpen(false); if (view === "connections") void refreshGraph(); }} sourceModule={module} sourceId={id} />
     {module === "tasks" && <><TaskWorkLogModal open={workLogOpen} onClose={() => setWorkLogOpen(false)} taskId={id} onSaved={() => { setWorkLogOpen(false); void refresh(); }} /><CreateSubtaskModal open={subtaskOpen} onClose={() => setSubtaskOpen(false)} parentId={id} onSaved={() => { setSubtaskOpen(false); void refresh(); }} /></>}
+    {["projects", "events", "tasks"].includes(module) && <CreateNoteModal open={noteOpen} onClose={() => setNoteOpen(false)} parent={{ parentType: module as HierarchyNodeType, parentId: id }} onSaved={() => { setNoteOpen(false); void refresh(); }} />}
     <Modal open={archiveOpen} onClose={() => setArchiveOpen(false)} title="Переместить в архив?" description="Рабочая история останется доступной в архиве."><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setArchiveOpen(false)}>Отмена</Button><Button variant="primary" onClick={async () => { await archiveRecord(module, id); router.push(`/${module}`); }}>Архивировать</Button></div></Modal>
   </div>;
 }
 
 function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {
   return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors ${active ? "bg-bcc-ink text-white" : "text-[#74747C] hover:bg-bcc-soft hover:text-bcc-ink"}`}>{icon}{children}</button>;
+}
+
+function HierarchyBreadcrumbs({ path }: { path: HierarchyPathItem[] }) {
+  return <nav className="mb-6 rounded-2xl border border-bcc-border bg-white px-4 py-3 shadow-card" aria-label="Иерархия записи"><div className="eyebrow">Рабочий контекст</div><div className="mt-2 flex min-w-0 items-center gap-1 overflow-x-auto text-sm">{path.map((item, index) => <span key={`${item.module}:${item.id}`} className="flex min-w-0 shrink-0 items-center gap-1"><span className="text-[#B0ADB7]">{index ? "→" : ""}</span>{index === path.length - 1 ? <span className="max-w-[240px] truncate font-semibold text-bcc-ink">{item.title}</span> : <Link href={`/${item.module}/${item.id}`} className="max-w-[220px] truncate font-medium text-bcc-deep hover:underline">{item.title}</Link>}</span>)}</div></nav>;
+}
+
+function HierarchySection({ module, childrenRows, onAddNote }: { module: ModuleKey; childrenRows: HierarchyChild[]; onAddNote?: () => void }) {
+  const canAddNote = ["projects", "events", "tasks"].includes(module);
+  const visibleRows = childrenRows.filter((child) => !(module === "tasks" && child.module === "tasks"));
+  if (!visibleRows.length && !canAddNote) return null;
+  return <section className="surface p-5 sm:p-6" aria-labelledby="hierarchy-title"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="eyebrow">Структура и контекст</div><h2 id="hierarchy-title" className="mt-1 text-xl font-semibold">Рабочее дерево</h2><p className="mt-1 text-sm text-[#74747C]">Здесь собраны записи, которые относятся к текущему проекту, событию или задаче.</p></div>{canAddNote && onAddNote && <Button variant="secondary" onClick={onAddNote}><Plus size={16} />Добавить заметку</Button>}</div>{visibleRows.length ? <div className="mt-5 divide-y divide-bcc-border rounded-2xl border border-bcc-border">{visibleRows.map((child) => <Link key={`${child.module}:${child.id}`} href={`/${child.module}/${child.id}`} className="flex min-h-14 items-center gap-3 px-3 py-3 transition hover:bg-bcc-soft sm:px-4"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-bcc-lilac text-xs font-semibold text-bcc-deep">{hierarchyTypeLabel(child.module).slice(0, 1)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{child.title}</span><span className="mt-0.5 block truncate text-xs text-[#8A8A90]">{hierarchyTypeLabel(child.module)} · {child.relation === "NOTE_ON" ? "заметка" : "часть контекста"}</span></span>{child.status && <StatusChip value={child.status} />}<ChevronRight size={16} className="shrink-0 text-[#8A8A90]" /></Link>)}</div> : <p className="mt-5 rounded-2xl bg-bcc-soft px-4 py-4 text-sm text-[#74747C]">Пока нет вложенных заметок и материалов.</p>}</section>;
 }
 
 function ParticipantsSection({ contacts, error, onChanged }: { contacts: AnyRecord[]; error: string; onChanged: (ids: string[]) => Promise<void> }) {
@@ -190,7 +218,7 @@ function WorkLogSection({ activity, onAdd }: { activity: AnyRecord[]; onAdd: () 
 
 function CreateSubtaskModal({ open, onClose, parentId, onSaved }: { open: boolean; onClose: () => void; parentId: string; onSaved: () => void }) { const [values, setValues] = useState({ title: "", description: "", status: "Inbox", priority: "Normal", due_date: "" }); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); async function submit(event: FormEvent) { event.preventDefault(); if (!values.title.trim()) { setError("Укажи название субзадачи."); return; } setSaving(true); setError(""); try { await createSubtask(parentId, values); setValues({ title: "", description: "", status: "Inbox", priority: "Normal", due_date: "" }); onSaved(); } catch (err) { setError(err instanceof Error ? err.message : "Не удалось создать субзадачу."); } finally { setSaving(false); } } return <Modal open={open} onClose={onClose} title="Добавить субзадачу" description="Она будет связана с текущей задачей и войдёт в расчёт готовности."><form onSubmit={submit} className="space-y-4"><Field label="Название"><Input autoFocus required value={values.title} onChange={(event) => setValues({ ...values, title: event.target.value })} placeholder="Например, собрать обратную связь" /></Field><Field label="Описание"><Textarea value={values.description} onChange={(event) => setValues({ ...values, description: event.target.value })} /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Статус"><Select value={values.status} onChange={(event) => setValues({ ...values, status: event.target.value })}><option>Inbox</option><option>Planned</option><option>In Progress</option><option>Waiting</option><option>Blocked</option><option>Done</option></Select></Field><Field label="Приоритет"><Select value={values.priority} onChange={(event) => setValues({ ...values, priority: event.target.value })}><option>Low</option><option>Normal</option><option>High</option><option>Critical</option></Select></Field></div><Field label="Срок"><Input type="date" value={values.due_date} onChange={(event) => setValues({ ...values, due_date: event.target.value })} /></Field>{error && <p className="rounded-xl bg-[#FDECEC] px-3 py-2 text-sm text-[#AF3030]" role="alert">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Отмена</Button><Button type="submit" variant="brand" disabled={saving}>{saving ? "Создаём…" : "Создать субзадачу"}</Button></div></form></Modal>; }
 
-function EditModal({ open, onClose, module, record, onSaved }: { open: boolean; onClose: () => void; module: ModuleKey; record: AnyRecord; onSaved: (record: AnyRecord) => void }) { const config = getModule(module)!; const [values, setValues] = useState<Record<string, string>>({}); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); useEffect(() => { if (open) setValues(Object.fromEntries(config.fields.map((field) => [field.key, String(record[field.key] ?? "")]))) }, [open, config, record]); async function submit(event: FormEvent) { event.preventDefault(); setSaving(true); setError(""); try { onSaved(await updateRecord(module, record.id, values)); } catch (err) { setError(err instanceof Error ? err.message : "Не удалось сохранить"); } finally { setSaving(false); } } return <Modal open={open} onClose={onClose} title={`Редактировать ${moduleCopy(module).singular}`} description="Изменения попадут в облачную базу и историю изменений."><form onSubmit={submit} className="space-y-4">{config.fields.map((field) => <RecordField key={field.key} field={field} value={values[field.key] ?? ""} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}{error && <p className="rounded-xl bg-[#FDECEC] px-3 py-2 text-sm text-[#AF3030]" role="alert">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Отмена</Button><Button type="submit" variant="brand" disabled={saving}><Save size={16} />{saving ? "Сохраняем…" : "Сохранить"}</Button></div></form></Modal>; }
+function EditModal({ open, onClose, module, record, onSaved }: { open: boolean; onClose: () => void; module: ModuleKey; record: AnyRecord; onSaved: (record: AnyRecord) => void }) { const config = getModule(module)!; const [values, setValues] = useState<Record<string, string>>({}); const [parent, setParent] = useState<ParentSelection>({}); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); useEffect(() => { if (open) { setValues(Object.fromEntries(config.fields.map((field) => [field.key, String(record[field.key] ?? "")] ))); setParent(parentSelectionForRecord(module, record)); } }, [open, config, module, record]); async function submit(event: FormEvent) { event.preventDefault(); if ((module === "tasks" || module === "knowledge") && (!parent.parentType || !parent.parentId)) { setError(module === "knowledge" ? "Привяжи заметку к проекту, событию или задаче." : "Привяжи задачу к проекту, событию или другой задаче."); return; } setSaving(true); setError(""); try { onSaved(await updateRecord(module, record.id, { ...values, ...recordFieldsForParent(module, parent) })); } catch (err) { setError(err instanceof Error ? err.message : "Не удалось сохранить"); } finally { setSaving(false); } } return <Modal open={open} onClose={onClose} title={`Редактировать ${moduleCopy(module).singular}`} description="Изменения попадут в облачную базу и историю изменений."><form onSubmit={submit} className="space-y-4">{config.fields.map((field) => <RecordField key={field.key} field={field} value={values[field.key] ?? ""} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}{hierarchySupports(module) && <ContextPicker module={module} value={parent} currentId={record.id} onChange={setParent} required={module === "tasks" || module === "knowledge"} />}{error && <p className="rounded-xl bg-[#FDECEC] px-3 py-2 text-sm text-[#AF3030]" role="alert">{error}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Отмена</Button><Button type="submit" variant="brand" disabled={saving}><Save size={16} />{saving ? "Сохраняем…" : "Сохранить"}</Button></div></form></Modal>; }
 
 function TaskWorkLogModal({ open, onClose, taskId, onSaved }: { open: boolean; onClose: () => void; taskId: string; onSaved: () => void }) { const [values, setValues] = useState({ done: "", people: "", discussed: "", result: "", next: "" }); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); async function submit(event: FormEvent) { event.preventDefault(); if (!values.done.trim()) { setError("Запиши хотя бы результат действия."); return; } setSaving(true); try { await addWorkLog(taskId, values); setValues({ done: "", people: "", discussed: "", result: "", next: "" }); onSaved(); } catch (err) { setError(err instanceof Error ? err.message : "Не удалось сохранить запись"); } finally { setSaving(false); } } return <Modal open={open} onClose={onClose} title="Рабочий журнал" description="Короткая запись о том, что произошло."><form onSubmit={submit} className="space-y-4"><Field label="Что сделал?" hint="Обязательное поле"><Textarea required value={values.done} onChange={(event) => setValues({ ...values, done: event.target.value })} /></Field><Field label="С кем взаимодействовал?"><Input value={values.people} onChange={(event) => setValues({ ...values, people: event.target.value })} /></Field><Field label="Что обсудили?"><Textarea value={values.discussed} onChange={(event) => setValues({ ...values, discussed: event.target.value })} /></Field><Field label="Какой результат?"><Textarea value={values.result} onChange={(event) => setValues({ ...values, result: event.target.value })} /></Field><Field label="Что дальше?"><Input value={values.next} onChange={(event) => setValues({ ...values, next: event.target.value })} /></Field>{error && <p className="rounded-xl bg-[#FDECEC] px-3 py-2 text-sm text-[#AF3030]" role="alert">{error}</p>}<div className="flex justify-end"><Button type="submit" variant="brand" disabled={saving}>{saving ? "Сохраняем…" : "Сохранить запись"}</Button></div></form></Modal>; }
 

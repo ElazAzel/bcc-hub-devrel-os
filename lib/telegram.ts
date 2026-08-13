@@ -8,6 +8,7 @@ export const TELEGRAM_COMMANDS = [
   { command: "task", description: "Создать задачу" },
   { command: "note", description: "Сохранить заметку" },
   { command: "tasks", description: "Показать активные задачи" },
+  { command: "contexts", description: "Показать проекты и события для привязки" },
   { command: "today", description: "Показать фокус на сегодня" },
   { command: "done", description: "Закрыть задачу по ID" },
   { command: "help", description: "Показать все команды" }
@@ -19,6 +20,13 @@ export function parseTelegramCommand(text: string): TelegramCommand | null {
   const [rawName = "", ...rest] = value.slice(1).split(/\s+/);
   const name = rawName.split("@")[0].toLowerCase();
   return name ? { name, argument: rest.join(" ").trim() } : null;
+}
+
+export function parseContextArgument(argument: string): { contextId: string; text: string } | null {
+  const [rawContextId = "", ...textParts] = argument.split("|");
+  const contextId = rawContextId.trim();
+  const text = textParts.join("|").trim();
+  return contextId && text ? { contextId, text } : null;
 }
 
 export function isUuid(value: string) {

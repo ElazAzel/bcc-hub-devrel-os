@@ -8,6 +8,12 @@ async function createFromQuickAdd(page: Page, type: RegExp, fieldLabel: string, 
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: type }).click();
   await dialog.getByLabel(fieldLabel, { exact: true }).fill(value);
+  if (/задачу/i.test(type.source)) {
+    await dialog.getByLabel("Тип контекста").selectOption("projects");
+    const contextRecord = dialog.getByLabel("Запись контекста");
+    await expect(contextRecord.locator("option")).not.toHaveCount(1);
+    await contextRecord.selectOption({ index: 1 });
+  }
   await dialog.getByRole("button", { name: "Создать", exact: true }).click();
   await expect(dialog).toContainText("Запись создана");
   await dialog.getByText("Закрыть", { exact: true }).click();
@@ -40,8 +46,8 @@ test("core records persist and global search opens a detail page", async ({ page
   const suffix = `${test.info().project.name}-${Date.now()}`;
   const taskTitle = `Проверка задачи ${suffix}`;
 
-  await createFromQuickAdd(page, /^задачу$/i, "Название", taskTitle);
   await createFromQuickAdd(page, /^проект$/i, "Название", `Проверка проекта ${suffix}`);
+  await createFromQuickAdd(page, /^задачу$/i, "Название", taskTitle);
   await createFromQuickAdd(page, /^контакт$/i, "Имя", `Контакт ${suffix}`);
   await createFromQuickAdd(page, /^взаимодействие$/i, "Название", `Встреча ${suffix}`);
 
@@ -54,6 +60,13 @@ test("core records persist and global search opens a detail page", async ({ page
   await searchDialog.getByText(taskTitle, { exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]+$/);
   await expect(page.getByRole("heading", { name: taskTitle })).toBeVisible();
+  await page.getByRole("button", { name: "Добавить заметку" }).click();
+  const noteDialog = page.getByRole("dialog");
+  await noteDialog.getByLabel("Заголовок").fill(`Заметка ${suffix}`);
+  await noteDialog.getByLabel("Текст заметки").fill("Контекст задачи сохранён рядом с задачей");
+  await noteDialog.getByRole("button", { name: "Сохранить заметку" }).click();
+  await expect(noteDialog).toBeHidden();
+  await expect(page.getByText(`Заметка ${suffix}`, { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: taskTitle })).toBeVisible();
 });
