@@ -4,13 +4,22 @@ export type AnyRecord = {
   title?: string;
   name?: string;
   description?: string | null;
+  direction?: string | null;
+  next_action?: string | null;
+  external_url?: string | null;
+  topic?: string | null;
+  position?: string | null;
+  category?: string | null;
+  ring?: string | null;
+  relationship_state?: string | null;
+  change_state?: string | null;
   status?: string | null;
   priority?: string | null;
   due_date?: string | null;
   created_at: string;
   updated_at: string;
   archived_at?: string | null;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type RecordListQuery = {
@@ -101,6 +110,13 @@ export type TaskReadiness = {
   waiting: number;
   blocked: number;
   percent: number;
+};
+
+export type EventReadiness = {
+  percent: number;
+  registrationPercent: number;
+  criticalTaskPercent: number;
+  criticalTasks: TaskReadiness;
 };
 
 export type ConnectionNode = {

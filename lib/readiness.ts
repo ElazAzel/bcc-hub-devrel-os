@@ -1,4 +1,4 @@
-import type { AnyRecord, TaskReadiness } from "./types";
+import type { AnyRecord, EventReadiness, TaskReadiness } from "./types";
 
 const ACTIVE_STATUSES = new Set(["Inbox", "Planned", "In Progress", "Waiting", "Blocked", "Done"]);
 const STATUS_WEIGHT: Record<string, number> = {
@@ -43,4 +43,19 @@ export function readinessLabel(readiness: TaskReadiness): string {
   if (readiness.percent === 100) return "Все субзадачи завершены";
   if (readiness.blocked) return `${readiness.blocked} заблокировано`;
   return `${readiness.done} из ${readiness.total} завершено`;
+}
+
+export function calculateEventReadiness(event: AnyRecord, tasks: AnyRecord[]): EventReadiness {
+  const target = Math.max(0, Number(event.registration_target ?? 0));
+  const registrations = Math.max(0, Number(event.registrations ?? 0));
+  const registrationPercent = target ? Math.min(100, Math.round((registrations / target) * 100)) : 0;
+  const criticalTasks = calculateTaskReadiness(tasks.filter((task) => String(task.priority ?? "") === "Critical"));
+  const criticalTaskPercent = criticalTasks.total ? criticalTasks.percent : 100;
+
+  return {
+    percent: Math.min(registrationPercent, criticalTaskPercent),
+    registrationPercent,
+    criticalTaskPercent,
+    criticalTasks
+  };
 }

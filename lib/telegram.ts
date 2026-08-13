@@ -3,6 +3,8 @@ export type TelegramCommand = {
   argument: string;
 };
 
+export const TELEGRAM_MAX_ARGUMENT_LENGTH = 2000;
+
 export const TELEGRAM_COMMANDS = [
   { command: "start", description: "Подключить рабочее пространство" },
   { command: "task", description: "Создать задачу" },
@@ -19,14 +21,15 @@ export function parseTelegramCommand(text: string): TelegramCommand | null {
   if (!value.startsWith("/")) return null;
   const [rawName = "", ...rest] = value.slice(1).split(/\s+/);
   const name = rawName.split("@")[0].toLowerCase();
-  return name ? { name, argument: rest.join(" ").trim() } : null;
+  const argument = rest.join(" ").trim();
+  return name ? { name, argument: argument.length <= TELEGRAM_MAX_ARGUMENT_LENGTH ? argument : "" } : null;
 }
 
 export function parseContextArgument(argument: string): { contextId: string; text: string } | null {
   const [rawContextId = "", ...textParts] = argument.split("|");
   const contextId = rawContextId.trim();
   const text = textParts.join("|").trim();
-  return contextId && text ? { contextId, text } : null;
+  return contextId && text && text.length <= TELEGRAM_MAX_ARGUMENT_LENGTH ? { contextId, text } : null;
 }
 
 export function isUuid(value: string) {
