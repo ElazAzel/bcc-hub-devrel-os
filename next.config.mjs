@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const isPlaywright = process.env.PLAYWRIGHT_TEST === "1";
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -20,7 +21,14 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react"]
-  }
+  },
+  ...(isPlaywright ? {
+    env: {
+      NEXT_PUBLIC_DATA_MODE: "local",
+      NEXT_PUBLIC_SUPABASE_URL: "",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+    }
+  } : {})
 };
 
 export default nextConfig;
