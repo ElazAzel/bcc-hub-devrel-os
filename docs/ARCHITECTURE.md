@@ -25,7 +25,7 @@ Every entity list has a detail route: `/<module>/<id>`. Global Quick Add and Ctr
 
 `component -> TanStack Query -> lib/data.ts -> Supabase table + activity_log`.
 
-Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-entity links go through `entity_relations`; task hierarchy uses `tasks.parent_task_id`; comments use owner-scoped `entity_comments`. The UI does not rely on a visual-only relationship: the map is a projection of persisted edges and records.
+Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-entity links go through `entity_relations`; contact participation is stored in owner-scoped `entity_contact_links`; task hierarchy uses `tasks.parent_task_id`; comments use owner-scoped `entity_comments`. The UI does not rely on a visual-only relationship: the map is a projection of persisted edges and records.
 
 ## Decision rules
 
@@ -36,5 +36,6 @@ Mutations add `owner_id`, timestamps and an Activity log entry. Important cross-
 - Global search calls the Postgres `workspace_search` function when available and falls back to ranked bounded queries while a migration is pending.
 - Task boards group in one pass through a `Map`; Meetup templates use one bulk insert; XP contribution uses one atomic Postgres function.
 - Task details expose subtasks, all comments and work-log interactions. Active child statuses produce a deterministic readiness percentage: Done 100%, In Progress 50%, Waiting 25%, Planned 10%, and blocked/inbox 0%; cancelled children are excluded.
+- The People module accepts a local `.md`/`.txt` directory import. Employees are normalized and deduplicated by email or phone/name before being written to Supabase; the source file is never committed. Every record can link one or more contacts through the same picker.
 - The Connections tab loads persisted edges and task hierarchy into a bounded, clickable map with status and readiness on each node.
 - URL parameters are the source of truth for list query state, so reload and shared links preserve the current view.

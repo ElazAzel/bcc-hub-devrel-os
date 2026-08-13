@@ -2,8 +2,9 @@ import { getSupabaseBrowserClient } from "./supabase/client";
 import { SEED_DATA } from "./seed";
 import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./search";
 import { toDataError } from "./errors";
-import { displayName, getModule, type AnyRecord, type ConnectionEdge, type ConnectionNode, type EntityComment, type EntityRelation, type ModuleKey, type RecordListQuery, type RecordPage, type TaskReadiness, type WorkspaceSearchResult } from "./types";
+import { displayName, getModule, type AnyRecord, type ConnectionEdge, type ConnectionNode, type EntityComment, type EntityContactLink, type EntityRelation, type EmployeeImportRow, type ModuleKey, type RecordListQuery, type RecordPage, type TaskReadiness, type WorkspaceSearchResult } from "./types";
 import { calculateTaskReadiness } from "./readiness";
+import { employeeIdentity } from "./employee-import";
 
 const supabase = getSupabaseBrowserClient();
 export const isCloudMode = Boolean(supabase);
@@ -39,7 +40,7 @@ const COMMON_COLUMNS = ["id", "owner_id", "created_at", "updated_at", "archived_
 const MODULE_QUERY_EXTRAS: Partial<Record<ModuleKey, string[]>> = {
   projects: ["health_score", "health_state", "last_activity_at", "project_type", "goal", "expected_result", "actual_result"],
   tasks: ["project_id", "parent_task_id", "source_date", "requested_by_contact_id", "expected_result", "blocker", "actual_result", "retrospective", "completed_at"],
-  people: ["name", "phone", "relationship_score", "relationship_state", "last_interaction_at"],
+  people: ["name", "phone", "department", "contact_kind", "relationship_score", "relationship_state", "last_interaction_at"],
   organizations: ["notes"],
   interactions: ["project_id", "event_id", "what_i_said", "what_they_said", "follow_up_date"],
   commitments: ["contact_id", "project_id", "interaction_id"],
@@ -357,6 +358,96 @@ export async function addComment(entityType: string, entityId: string, body: str
   return data as EntityComment;
 }
 
+const CONTACT_LINKS_KEY = "bcc-hub:entity-contact-links";
+
+function readLocalContactLinks(): EntityContactLink[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(window.localStorage.getItem(CONTACT_LINKS_KEY) ?? "[]") as EntityContactLink[]; } catch { return []; }
+}
+
+function writeLocalContactLinks(rows: EntityContactLink[]) {
+  window.localStorage.setItem(CONTACT_LINKS_KEY, JSON.stringify(rows));
+  window.dispatchEvent(new CustomEvent("bcc:data-changed", { detail: "entity-contact-links" }));
+}
+
+export async function loadEntityContactLinks(entityType?: string, entityId?: string): Promise<EntityContactLink[]> {
+  if (!supabase) {
+    return readLocalContactLinks().filter((row) => (!entityType || row.entity_type === entityType) && (!entityId || row.entity_id === entityId));
+  }
+  let request = supabase.from("entity_contact_links").select("*").order("created_at", { ascending: true }).limit(500);
+  if (entityType) request = request.eq("entity_type", entityType);
+  if (entityId) request = request.eq("entity_id", entityId);
+  const { data, error } = await request;
+  if (error) throw toDataError(error);
+  return (data ?? []) as EntityContactLink[];
+}
+
+export async function loadEntityContacts(entityType: string, entityId: string): Promise<AnyRecord[]> {
+  const links = await loadEntityContactLinks(entityType, entityId);
+  const ids = [...new Set(links.map((link) => link.contact_id))];
+  if (!ids.length) return [];
+  const rows = !supabase
+    ? readLocal("people").filter((row) => ids.includes(row.id) && !row.archived_at)
+    : await (async () => {
+      const { data, error } = await supabase.from("contacts").select("*").in("id", ids).is("archived_at", null);
+      if (error) throw toDataError(error);
+      return (data ?? []) as AnyRecord[];
+    })();
+  const order = new Map(ids.map((id, index) => [id, index]));
+  return rows.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
+}
+
+export async function replaceEntityContacts(entityType: string, entityId: string, contactIds: string[], role = "participant") {
+  const ids = [...new Set(contactIds.filter(Boolean))];
+  if (!supabase) {
+    const now = new Date().toISOString();
+    const kept = readLocalContactLinks().filter((row) => row.entity_type !== entityType || row.entity_id !== entityId);
+    const next = ids.map((contactId) => ({ id: crypto.randomUUID(), owner_id: ownerKey(), entity_type: entityType, entity_id: entityId, contact_id: contactId, role, created_at: now } satisfies EntityContactLink));
+    writeLocalContactLinks([...next, ...kept]);
+  } else {
+    const user = await supabase.auth.getUser();
+    if (user.error) throw toDataError(user.error);
+    if (!user.data.user) throw new Error("Нужна авторизация");
+    const ownerId = user.data.user.id;
+    const { error: deleteError } = await supabase.from("entity_contact_links").delete().eq("entity_type", entityType).eq("entity_id", entityId);
+    if (deleteError) throw toDataError(deleteError);
+    if (ids.length) {
+      const { error: insertError } = await supabase.from("entity_contact_links").insert(ids.map((contactId) => ({ owner_id: ownerId, entity_type: entityType, entity_id: entityId, contact_id: contactId, role })));
+      if (insertError) throw toDataError(insertError);
+    }
+  }
+  await logActivity("contacts linked", entityType, entityId, `${ids.length} контакт(ов) привязано`);
+}
+
+async function loadAllRecords(module: ModuleKey) {
+  const rows: AnyRecord[] = [];
+  for (let page = 1; page <= 100; page += 1) {
+    const result = await listRecords(module, { page, pageSize: MAX_PAGE_SIZE });
+    rows.push(...result.items);
+    if (!result.hasMore) break;
+  }
+  return rows;
+}
+
+export async function importEmployeeContacts(rows: EmployeeImportRow[]) {
+  const existing = await loadAllRecords("people");
+  const known = new Set(existing.map((row) => employeeIdentity(row)));
+  const pending = rows.filter((row) => {
+    const key = employeeIdentity(row);
+    if (known.has(key)) return false;
+    known.add(key);
+    return true;
+  });
+  let created = 0;
+  for (let index = 0; index < pending.length; index += 100) {
+    const batch = pending.slice(index, index + 100);
+    await createRecords("people", batch);
+    created += batch.length;
+  }
+  if (created) await logActivity("employee import", "people", "directory", `${created} сотрудников импортировано; дубликаты пропущены`);
+  return { total: rows.length, created, skipped: rows.length - created };
+}
+
 function isModuleKey(value: string): value is ModuleKey {
   return Boolean(getModule(value));
 }
@@ -390,6 +481,9 @@ export async function loadConnectionGraph(module: ModuleKey, id: string): Promis
     if (sourceIsRoot) addEdge(module, id, relation.target_type, relation.target_id, relation.relation_type, relation.id);
     else if (targetIsRoot) addEdge(relation.source_type, relation.source_id, module, id, relation.relation_type, relation.id);
   });
+
+  const contactLinks = await loadEntityContactLinks(module, id);
+  contactLinks.forEach((link) => addEdge(module, id, "people", link.contact_id, link.role ?? "PARTICIPANT", `contact:${link.id}`));
 
   if (module === "tasks") {
     const children = await loadSubtasks(id);

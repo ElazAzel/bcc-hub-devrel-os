@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Archive, ArrowLeft, CalendarClock, CheckCircle2, ChevronRight, Edit3, ExternalLink, Link2, MessageCircle, Network, Plus, Save, Sparkles, UserRound } from "lucide-react";
-import { addAmbassadorContribution, addComment, addRelation, addWorkLog, archiveRecord, createSubtask, loadActivity, loadComments, loadConnectionGraph, loadRecord, loadRecords, loadSubtasks, updateRecord } from "@/lib/data";
+import { addAmbassadorContribution, addComment, addRelation, addWorkLog, archiveRecord, createSubtask, loadActivity, loadComments, loadConnectionGraph, loadEntityContacts, loadRecord, loadRecords, loadSubtasks, replaceEntityContacts, updateRecord } from "@/lib/data";
 import { fieldLabel, formatDateRu, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { calculateProjectHealth } from "@/lib/health";
 import { calculateTaskReadiness, readinessLabel } from "@/lib/readiness";
@@ -12,6 +12,7 @@ import { displayName, getModule, type AnyRecord, type ConnectionNode, type Entit
 import { PageHeader } from "./page-header";
 import { StatusChip } from "./status-chip";
 import { Button, EmptyState, ErrorState, Field, Input, LoadingState, Modal, Select, Textarea } from "./ui";
+import { ContactPicker } from "./contact-picker";
 
 type DetailView = "overview" | "connections";
 type ConnectionGraph = Awaited<ReturnType<typeof loadConnectionGraph>>;
@@ -23,6 +24,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
   const [record, setRecord] = useState<AnyRecord | null>(null);
   const [activity, setActivity] = useState<AnyRecord[]>([]);
   const [comments, setComments] = useState<EntityComment[]>([]);
+  const [contacts, setContacts] = useState<AnyRecord[]>([]);
   const [subtasks, setSubtasks] = useState<AnyRecord[]>([]);
   const [readiness, setReadiness] = useState<TaskReadiness | null>(null);
   const [health, setHealth] = useState<{ score: number; state: string; reasons: string[] } | null>(null);
@@ -32,6 +34,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
   const [graphLoading, setGraphLoading] = useState(false);
   const [error, setError] = useState("");
   const [commentsError, setCommentsError] = useState("");
+  const [contactsError, setContactsError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [relationOpen, setRelationOpen] = useState(false);
@@ -46,15 +49,21 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
       setRecord(next);
       if (!next) return;
       setCommentsError("");
-      const [log, nextComments] = await Promise.all([
+      setContactsError("");
+      const [log, nextComments, nextContacts] = await Promise.all([
         loadActivity(module, id),
         loadComments(module, id).catch(() => {
           setCommentsError("Комментарии пока недоступны. Проверь миграцию слоя комментариев в Supabase.");
+          return [];
+        }),
+        module === "people" ? Promise.resolve([]) : loadEntityContacts(module, id).catch(() => {
+          setContactsError("Не удалось загрузить связанные контакты. Повтори попытку после применения миграции.");
           return [];
         })
       ]);
       setActivity(log);
       setComments(nextComments);
+      setContacts(nextContacts);
       if (module === "tasks") {
         const children = await loadSubtasks(id);
         setSubtasks(children);
@@ -103,6 +112,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
       <section className="surface p-5 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex flex-wrap items-center gap-2"><StatusChip value={record.status ?? record.ring ?? record.change_state ?? record.relationship_state} /><StatusChip value={record.priority} tone="brand" />{record.direction && <span className="chip">{ru(record.direction)}</span>}{record.due_date && <span className="chip"><CalendarClock size={13} />{formatDateRu(record.due_date)}</span>}</div><div className="flex flex-wrap gap-1"><Button variant="ghost" onClick={() => setRelationOpen(true)}><Link2 size={16} />Связать</Button><Button variant="ghost" onClick={() => setArchiveOpen(true)}><Archive size={16} />Архив</Button></div></div>{health && <HealthPanel details={health} />}{module === "tasks" && readiness && <TaskReadinessPanel readiness={readiness} />}{module === "tech-radar" && <RadarPanel record={record} />}{module === "events" && <EventReadiness record={record} />}{module === "people" && <RelationshipPanel record={record} />}{module === "ambassadors" && <AmbassadorPanel record={record} onUpdate={async (xp) => { await addAmbassadorContribution(id, { type: "Manual contribution", base_xp: xp, final_xp: xp, status: "Approved" }); await refresh(); }} />}</section>
       {module === "tasks" && <SubtasksSection subtasks={subtasks} readiness={readiness ?? calculateTaskReadiness([])} onAdd={() => setSubtaskOpen(true)} onChanged={refresh} />}
       {module === "tasks" && <WorkLogSection activity={activity} onAdd={() => setWorkLogOpen(true)} />}
+      {module !== "people" && <ParticipantsSection contacts={contacts} error={contactsError} onChanged={async (ids) => { await replaceEntityContacts(module, id, ids); setContacts(await loadEntityContacts(module, id)); }} />}
       <CommentsSection entityType={module} entityId={id} comments={comments} error={commentsError} onSaved={(comment) => { setComments((current) => [...current, comment]); setCommentsError(""); }} />
       <section className="surface p-5 sm:p-6"><div className="flex items-center justify-between"><div><div className="eyebrow">История изменений</div><h2 className="mt-1 text-xl font-semibold">Всё, что происходило</h2></div><span className="chip">{activity.length}</span></div>{activity.length ? <div className="mt-5 space-y-4">{activity.map((item) => <div key={item.id} className="flex gap-3"><span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-bcc-lilac text-bcc-deep"><CheckCircle2 size={14} /></span><div><div className="whitespace-pre-wrap text-sm font-medium">{String(item.message ?? item.action)}</div><div className="mt-0.5 text-xs text-[#8A8A90]">{formatDateTime(item.created_at)}</div></div></div>)}</div> : <p className="mt-5 text-sm text-[#74747C]">История появится после изменений и связанных действий.</p>}</section>
       <section className="surface p-5 sm:p-6"><div className="flex items-center justify-between"><div><div className="eyebrow">Контекст</div><h2 className="mt-1 text-xl font-semibold">Детали записи</h2></div><Button variant="ghost" onClick={() => setEditOpen(true)}><Edit3 size={16} />Изменить</Button></div><div className="mt-5 grid gap-4 sm:grid-cols-2">{details.length ? details.map((field) => <DetailField key={field.key} field={field} value={record[field.key]} />) : <p className="text-sm text-[#74747C]">Пока нет дополнительных полей.</p>}</div></section>
@@ -117,6 +127,16 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
 
 function TabButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {
   return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors ${active ? "bg-bcc-ink text-white" : "text-[#74747C] hover:bg-bcc-soft hover:text-bcc-ink"}`}>{icon}{children}</button>;
+}
+
+function ParticipantsSection({ contacts, error, onChanged }: { contacts: AnyRecord[]; error: string; onChanged: (ids: string[]) => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  async function change(next: string[]) {
+    setSaving(true); setMessage("");
+    try { await onChanged(next); setMessage("Контакты сохранены."); } catch (err) { setMessage(err instanceof Error ? err.message : "Не удалось сохранить контакты."); } finally { setSaving(false); }
+  }
+  return <section className="surface p-5 sm:p-6" aria-labelledby="participants-title"><div className="mb-4"><div className="eyebrow">Связи записи</div><h2 id="participants-title" className="mt-1 text-xl font-semibold">С кем взаимодействовал</h2><p className="mt-1 text-sm text-[#74747C]">Эти контакты будут видны в карте связей и помогут восстановить контекст.</p></div><ContactPicker value={contacts.map((contact) => contact.id)} onChange={(ids) => void change(ids)} disabled={saving} />{error && <p className="mt-3 rounded-xl bg-[#FFF4DE] px-3 py-2 text-sm text-[#76551A]">{error}</p>}{message && <p className="mt-3 text-sm text-[#18723B]" role="status">{message}</p>}</section>;
 }
 
 function SubtasksSection({ subtasks, readiness, onAdd, onChanged }: { subtasks: AnyRecord[]; readiness: TaskReadiness; onAdd: () => void; onChanged: () => Promise<void> }) {
