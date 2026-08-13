@@ -132,3 +132,13 @@ button:disabled { cursor: not-allowed; opacity: .6; }
   .page-enter, .modal-surface, .motion-overlay, .notification-dot, .skeleton { animation: none !important; }
   .hover-lift:hover, .button-primary:hover, .button-brand:hover, .button-secondary:hover { transform: none !important; }
 }
+
+.modal-surface {
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: max(1.25rem, calc(1rem + env(safe-area-inset-bottom)));
+}
+
+/* Keep legacy compact controls within the 44px touch-target contract. */
+.min-h-10 { min-height: 44px; }
+.min-w-10 { min-width: 44px; }
+.h-10.w-10 { min-height: 44px; min-width: 44px; }

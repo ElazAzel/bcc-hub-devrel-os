@@ -1,9 +1,13 @@
 {
   "name": "BCC HUB DevRel OS",
   "short_name": "DevRel OS",
+  "id": "/",
   "description": "Персональный рабочий центр DevRel",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "lang": "ru",
+  "orientation": "portrait-primary",
   "background_color": "#FFFFFF",
   "theme_color": "#8934F9",
   "icons": [

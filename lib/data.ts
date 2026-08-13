@@ -341,12 +341,25 @@ export async function loadHierarchyPath(module: HierarchyNodeType, id: string): 
 
 export async function loadHierarchyChildren(parentType: HierarchyNodeType, parentId: string): Promise<Array<HierarchyPathItem & { relation: string; status: string | null }>> {
   const links = await loadEntityParentLinks({ parentType, parentId });
-  const children = await Promise.all(links.filter((link) => isHierarchyNodeType(link.child_type)).map(async (link) => {
+  const recordsByKey = new Map<string, AnyRecord>();
+  const groups = new Map<HierarchyNodeType, Set<string>>();
+  links.forEach((link) => {
+    if (!isHierarchyNodeType(link.child_type)) return;
     const childType = link.child_type as HierarchyNodeType;
-    const record = await loadRecord(childType, link.child_id);
-    return record ? { module: childType, id: link.child_id, title: hierarchyTitle(record), relation: link.relation_type, status: record.status ?? null } : null;
+    const ids = groups.get(childType) ?? new Set<string>();
+    ids.add(link.child_id);
+    groups.set(childType, ids);
+  });
+  await Promise.all([...groups.entries()].map(async ([childType, ids]) => {
+    const records = await loadRecords(childType, { pageSize: MAX_PAGE_SIZE });
+    records.filter((record) => ids.has(record.id)).forEach((record) => recordsByKey.set(`${childType}:${record.id}`, record));
   }));
-  return children.filter((child): child is HierarchyPathItem & { relation: string; status: string | null } => Boolean(child));
+  return links.flatMap((link) => {
+    if (!isHierarchyNodeType(link.child_type)) return [];
+    const childType = link.child_type as HierarchyNodeType;
+    const record = recordsByKey.get(`${childType}:${link.child_id}`);
+    return record ? [{ module: childType, id: link.child_id, title: hierarchyTitle(record), relation: link.relation_type, status: record.status ?? null }] : [];
+  });
 }
 
 export async function createRecords(module: ModuleKey, inputs: Array<Record<string, unknown>>): Promise<AnyRecord[]> {
@@ -689,24 +702,35 @@ export async function loadConnectionGraph(module: ModuleKey, id: string): Promis
   reverseRows.forEach(({ childModule, field, rows }) => rows.forEach((row) => addEdge(module, id, childModule, row.id, "CONTEXT", `reverse:${childModule}:${field}:${row.id}`)));
 
   const endpointKeys = [...nodeCandidates.keys()].filter((key) => key !== rootKey).slice(0, 30);
-  const endpointRecords = await Promise.all(endpointKeys.map(async (key) => {
+  const endpointGroups = new Map<ModuleKey, Set<string>>();
+  endpointKeys.forEach((key) => {
     const [endpointModule, endpointId] = key.split(":");
-    if (!isModuleKey(endpointModule) || !endpointId) return null;
-    const record = await loadRecord(endpointModule, endpointId);
-    return record ? { key, module: endpointModule, id: endpointId, record } : null;
-  }));
+    if (!isModuleKey(endpointModule) || !endpointId) return;
+    const ids = endpointGroups.get(endpointModule) ?? new Set<string>();
+    ids.add(endpointId);
+    endpointGroups.set(endpointModule, ids);
+  });
+  const endpointRecords = (await Promise.all([...endpointGroups.entries()].map(async ([endpointModule, ids]) => {
+    const records = await loadRecords(endpointModule, { pageSize: 100 });
+    return [...ids].map((endpointId) => {
+      const record = records.find((candidate) => candidate.id === endpointId);
+      return record ? { key: connectionKey(endpointModule, endpointId), module: endpointModule, id: endpointId, record } : null;
+    });
+  }))).flat();
   const nodes: ConnectionNode[] = [rootNode];
   for (const endpoint of endpointRecords) {
     if (!endpoint) continue;
     const record = endpoint.record;
-    nodes.push({ key: endpoint.key, module: endpoint.module, id: endpoint.id, title: displayName(record), subtitle: String(record.description ?? record.topic ?? record.position ?? ""), status: record.status ?? record.ring ?? record.relationship_state });
+    nodes.push({ key: endpoint.key, module: endpoint.module, id: endpoint.id, title: displayName(record), subtitle: String(record.description ?? record.topic ?? record.position ?? ""), status: record.status != null ? String(record.status) : record.ring != null ? String(record.ring) : record.relationship_state != null ? String(record.relationship_state) : null });
   }
 
   const taskNodes = nodes.filter((node) => node.module === "tasks");
-  await Promise.all(taskNodes.map(async (node) => {
-    const children = await loadSubtasks(node.id);
-    node.readiness = calculateTaskReadiness(children);
-  }));
+  if (taskNodes.length) {
+    const taskRows = await loadRecords("tasks", { pageSize: 100 });
+    taskNodes.forEach((node) => {
+      node.readiness = calculateTaskReadiness(taskRows.filter((task) => task.parent_task_id === node.id));
+    });
+  }
   return { nodes, edges: edges.filter((edge, index, all) => all.findIndex((candidate) => candidate.key === edge.key) === index) };
 }
 
