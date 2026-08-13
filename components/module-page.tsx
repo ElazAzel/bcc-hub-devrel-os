@@ -11,6 +11,7 @@ import { groupTasksByStatus } from "@/lib/task-board";
 import { displayName, getModule, type AnyRecord, type ModuleKey } from "@/lib/types";
 import { requestQuickAdd } from "@/lib/ui-events";
 import { PageHeader } from "./page-header";
+import { EmployeeImport } from "./employee-import";
 import { StatusChip } from "./status-chip";
 import { Button, EmptyState, ErrorState, Field, LoadingState, Modal, Select } from "./ui";
 
@@ -47,6 +48,7 @@ export function ModulePage({ module }: { module: ModuleKey }) {
   const viewOptions = module === "tasks" ? ["list", "board"] as ViewMode[] : module === "tech-radar" ? ["list", "radar", "changelog"] as ViewMode[] : ["list"] as ViewMode[];
   return <div>
     <PageHeader eyebrow="Рабочее пространство" title={moduleCopy(module).label} description={moduleCopy(module).description} onSearch={changeSearch} searchValue={searchInput} />
+    {module === "people" && <EmployeeImport />}
     {module === "ambassadors" && <AmbassadorSnapshot rows={rows} />}
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="chip">{result.data.total} записей</span>{status && <button className="chip chip-active" onClick={() => { setStatus(""); updateUrl({ status: undefined, page: 1 }); }}>{ru(status)} ×</button>}</div><div className="flex items-center gap-1 rounded-full border border-bcc-border p-1">{viewOptions.map((option) => <IconTab key={option} active={view === option} label={option === "list" ? "Список" : option === "board" ? "Доска" : option === "radar" ? "Техрадар" : "Изменения"} onClick={() => changeView(option)}>{option === "list" ? <List size={16} /> : option === "board" ? <Grid2X2 size={16} /> : option === "radar" ? <RadarIcon size={16} /> : <span className="text-[10px] font-semibold">Δ</span>}</IconTab>)}<IconTab active={filtersOpen} label="Фильтры" onClick={() => setFiltersOpen(true)}><SlidersHorizontal size={16} /></IconTab></div></div>
     {rows.length === 0 ? <EmptyState title={query ? "Ничего не найдено" : config.emptyTitle.replace(/^[A-Z].*$/, moduleCopy(module).label + " пока нет")} description={query ? "Измени запрос или создай новую запись." : config.emptyDescription} action={<Button variant="brand" onClick={() => requestQuickAdd(module)}><Plus size={16} />Создать {moduleCopy(module).singular}</Button>} /> : view === "board" ? <TaskBoard rows={rows} /> : view === "radar" ? <RadarOverview rows={rows} /> : view === "changelog" ? <RadarChangelog rows={rows} /> : <RecordTable rows={rows} module={module} />}

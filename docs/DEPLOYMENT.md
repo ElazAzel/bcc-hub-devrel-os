@@ -21,7 +21,7 @@ Without Supabase variables the UI runs in local development mode. If credentials
 
 1. Project ref: `njedalwewcsmsitrbwej`.
 2. Authenticate the Supabase CLI: `supabase login`.
-3. Link and apply both migrations in filename order:
+3. Link and apply all migrations in filename order:
 
    ```bash
    supabase link --project-ref njedalwewcsmsitrbwej

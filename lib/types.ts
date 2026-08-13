@@ -61,6 +61,28 @@ export type EntityComment = {
   updated_at?: string;
 };
 
+export type EntityContactLink = {
+  id: string;
+  owner_id?: string;
+  entity_type: string;
+  entity_id: string;
+  contact_id: string;
+  role?: string | null;
+  created_at: string;
+};
+
+export type EmployeeImportRow = {
+  name: string;
+  first_name: string;
+  last_name: string;
+  position: string;
+  department: string;
+  email: string;
+  phone: string;
+  contact_kind: "Employee";
+  notes?: string;
+};
+
 export type TaskReadiness = {
   total: number;
   done: number;
@@ -160,9 +182,12 @@ export const MODULES: Record<ModuleKey, ModuleConfig> = {
       { key: "first_name", label: "Имя", required: true, placeholder: "Demo" },
       { key: "last_name", label: "Фамилия", placeholder: "Speaker" },
       { key: "position", label: "Роль / позиция", placeholder: "Backend Engineer" },
+      { key: "department", label: "Подразделение", placeholder: "Центр IT" },
       { key: "organization_name", label: "Организация", placeholder: "Demo Partner" },
       { key: "email", label: "Email", type: "text", placeholder: "name@example.com" },
+      { key: "phone", label: "Телефон", type: "text", placeholder: "+7 700 000 00 00" },
       { key: "telegram", label: "Telegram", placeholder: "@handle" },
+      { key: "contact_kind", label: "Тип контакта", type: "select", options: ["External", "Employee"] },
       { key: "relationship_type", label: "Тип связи", type: "select", options: ["Speaker", "Partner", "Community", "Colleague", "Media", "Mentor", "Other"] },
       { key: "next_follow_up_at", label: "Следующий follow-up", type: "date" },
       { key: "notes", label: "Заметки", type: "textarea" }
