@@ -39,6 +39,55 @@ export type WorkspaceSearchResult = {
   rank: number;
 };
 
+export type EntityRelation = {
+  id: string;
+  owner_id?: string;
+  source_type: string;
+  source_id: string;
+  relation_type: string;
+  target_type: string;
+  target_id: string;
+  created_at: string;
+};
+
+export type EntityComment = {
+  id: string;
+  owner_id?: string;
+  entity_type: string;
+  entity_id: string;
+  body: string;
+  author_name?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type TaskReadiness = {
+  total: number;
+  done: number;
+  inProgress: number;
+  waiting: number;
+  blocked: number;
+  percent: number;
+};
+
+export type ConnectionNode = {
+  key: string;
+  module: ModuleKey;
+  id: string;
+  title: string;
+  subtitle?: string;
+  status?: string | null;
+  readiness?: TaskReadiness;
+  root?: boolean;
+};
+
+export type ConnectionEdge = {
+  key: string;
+  source: string;
+  target: string;
+  relation: string;
+};
+
 export type ModuleKey =
   | "projects" | "tasks" | "people" | "organizations" | "interactions" | "commitments"
   | "events" | "content" | "communities" | "ambassadors" | "tech-radar" | "documents"
