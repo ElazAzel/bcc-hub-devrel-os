@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Grid2X2, List, Plus, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
@@ -17,30 +17,53 @@ import { Button, EmptyState, ErrorState, Field, LoadingState, Modal, Select } fr
 
 type ViewMode = "list" | "board" | "radar" | "changelog";
 
+function defaultView(module: ModuleKey): ViewMode {
+  return module === "tasks" ? "board" : module === "tech-radar" ? "radar" : "list";
+}
+
+function isViewMode(value: string | null): value is ViewMode {
+  return value === "list" || value === "board" || value === "radar" || value === "changelog";
+}
+
 export function ModulePage({ module }: { module: ModuleKey }) {
   const config = getModule(module)!;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const initialViewParam = searchParams.get("view");
   const [searchInput, setSearchInput] = useState(searchParams.get("q") ?? "");
   const [status, setStatus] = useState(searchParams.get("status") ?? "");
-  const [view, setView] = useState<ViewMode>((searchParams.get("view") as ViewMode) || (module === "tasks" ? "board" : module === "tech-radar" ? "radar" : "list"));
+  const [view, setView] = useState<ViewMode>(isViewMode(initialViewParam) ? initialViewParam : defaultView(module));
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+  const searchTimer = useRef<number | null>(null);
+  const rawPage = Number(searchParams.get("page") ?? 1);
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const query = searchParams.get("q") ?? "";
+  const viewParam = initialViewParam;
+  const statusParam = searchParams.get("status") ?? "";
   const result = useQuery({ queryKey: ["records", module, query, status, page], queryFn: () => listRecords(module, { q: query || undefined, statuses: status ? [status] : undefined, page, pageSize: 50 }), placeholderData: keepPreviousData });
 
-  useEffect(() => { setSearchInput(query); setStatus(searchParams.get("status") ?? ""); }, [module, query, searchParams]);
+  useEffect(() => {
+    setSearchInput(query);
+    setStatus(statusParam);
+    setView(isViewMode(viewParam) ? viewParam : defaultView(module));
+  }, [module, query, statusParam, viewParam]);
+  useEffect(() => () => { if (searchTimer.current !== null) window.clearTimeout(searchTimer.current); }, []);
   useEffect(() => { const onChange = (event: Event) => { if ((event as CustomEvent).detail === module) void queryClient.invalidateQueries({ queryKey: ["records", module] }); }; window.addEventListener("bcc:data-changed", onChange); return () => window.removeEventListener("bcc:data-changed", onChange); }, [module, queryClient]);
 
   function updateUrl(changes: Record<string, string | number | undefined>) {
     const next = new URLSearchParams(searchParams.toString());
     Object.entries(changes).forEach(([key, value]) => { if (value === undefined || value === "") next.delete(key); else next.set(key, String(value)); });
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    const serialized = next.toString();
+    router.replace(serialized ? `${pathname}?${serialized}` : pathname, { scroll: false });
   }
   function changeView(next: ViewMode) { setView(next); updateUrl({ view: next, page: 1 }); }
-  function changeSearch(value: string) { setSearchInput(value); window.clearTimeout(Number((window as Window & { __bccSearchTimer?: number }).__bccSearchTimer)); (window as Window & { __bccSearchTimer?: number }).__bccSearchTimer = window.setTimeout(() => updateUrl({ q: value.trim() || undefined, page: 1 }), 220); }
+  function changeSearch(value: string) {
+    setSearchInput(value);
+    if (searchTimer.current !== null) window.clearTimeout(searchTimer.current);
+    searchTimer.current = window.setTimeout(() => updateUrl({ q: value.trim() || undefined, page: 1 }), 220);
+  }
 
   if (result.isPending) return <LoadingState />;
   if (result.isError) return <ErrorState message={result.error instanceof Error ? result.error.message : "Не удалось загрузить данные."} onRetry={() => void result.refetch()} />;
@@ -69,4 +92,4 @@ function AmbassadorSnapshot({ rows }: { rows: AnyRecord[] }) { const leaderboard
 
 function AdvancedFilters({ open, onClose, module, value, onApply }: { open: boolean; onClose: () => void; module: ModuleKey; value: string; onApply: (value: string) => void }) { const config = getModule(module)!; const options = config.fields.find((field) => field.key === "status")?.options ?? []; const [draft, setDraft] = useState(value); useEffect(() => setDraft(value), [value, open]); return <Modal open={open} onClose={onClose} title="Фильтры" description="Оставь только то, что нужно для текущей работы."><div className="space-y-4"><Field label={fieldLabel("status")}><Select value={draft} onChange={(event) => setDraft(event.target.value)}><option value="">Все статусы</option>{localizeOptions(options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setDraft(""); onApply(""); onClose(); }}>Сбросить</Button><Button variant="brand" onClick={() => { onApply(draft); onClose(); }}>Применить</Button></div></div></Modal>; }
 function Pagination({ page, hasMore, onChange }: { page: number; hasMore: boolean; onChange: (page: number) => void }) { return <div className="mt-4 flex items-center justify-between rounded-2xl border border-bcc-border bg-white px-4 py-3 text-sm"><Button variant="secondary" disabled={page <= 1} onClick={() => onChange(page - 1)}>Назад</Button><span className="text-[#74747C]">Страница {page}</span><Button variant="secondary" disabled={!hasMore} onClick={() => onChange(page + 1)}>Дальше</Button></div>; }
-function IconTab({ active, label, onClick, children }: { active: boolean; label: string; onClick: () => void; children: React.ReactNode }) { return <button aria-label={label} title={label} onClick={onClick} className={`inline-flex min-h-10 min-w-10 items-center justify-center rounded-full ${active ? "bg-bcc-lilac text-bcc-deep" : "text-[#8A8A90] hover:bg-bcc-soft"}`}>{children}</button>; }
+function IconTab({ active, label, onClick, children }: { active: boolean; label: string; onClick: () => void; children: React.ReactNode }) { return <button aria-label={label} title={label} onClick={onClick} className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-full ${active ? "bg-bcc-lilac text-bcc-deep" : "text-[#8A8A90] hover:bg-bcc-soft"}`}>{children}</button>; }
