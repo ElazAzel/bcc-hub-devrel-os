@@ -67,7 +67,7 @@ npm run test:e2e
 - Deterministic Project Health, Event Readiness, XP ledger confirmation and Tech Radar rings.
 - Cross-entity relations and Activity log.
 - Calendar aggregation and decision-support analytics.
-- PWA manifest, maskable icon, service worker and offline indicator.
+- PWA manifest, maskable icon, service worker, network-first navigation cache and offline fallback page with an online/offline indicator.
 - URL-persistent search, filters, pagination and list/board/radar views.
 - Russian interface with stable English enum values in storage.
 - Radix Dialog focus management, reduced-motion support and 44px touch targets.
