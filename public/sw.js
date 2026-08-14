@@ -1,5 +1,5 @@
-const CACHE = "bcc-hub-devrel-static-v3";
-const STATIC_ASSETS = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/maskable.svg"];
+const CACHE = "bcc-hub-devrel-static-v5";
+const STATIC_ASSETS = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/maskable.svg", "/offline.html"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting()));
@@ -19,7 +19,12 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request));
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response.ok) void caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+        return response;
+      }).catch(() => caches.match(request).then((cached) => cached || caches.match("/offline.html"))),
+    );
     return;
   }
 

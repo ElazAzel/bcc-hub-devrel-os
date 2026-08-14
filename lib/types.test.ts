@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayName, getModule, isFieldVisible } from "./types";
+import { displayName, getModule, isFieldVisible, MODULES } from "./types";
 
 const base = { id: "task", created_at: "", updated_at: "" };
 
@@ -20,5 +20,13 @@ describe("task display names", () => {
     expect(isFieldVisible("tasks", url, { meeting_mode: "offline" })).toBe(false);
     expect(isFieldVisible("tasks", location, { meeting_mode: "offline" })).toBe(true);
     expect(isFieldVisible("tasks", location, { meeting_mode: "online" })).toBe(false);
+  });
+
+  it("exposes an optional planning period for every workspace entity", () => {
+    Object.keys(MODULES).forEach((module) => {
+      const keys = new Set((getModule(module)?.fields ?? []).map((field) => field.key));
+      expect(keys.has("start_date") || keys.has("date_start")).toBe(true);
+      expect(keys.has("end_date") || keys.has("date_end")).toBe(true);
+    });
   });
 });

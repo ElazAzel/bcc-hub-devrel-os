@@ -19,7 +19,7 @@ Every entity list has a detail route: `/<module>/<id>`. Global Quick Add and Ctr
 - Supabase browser SDK is the cloud-first repository when both public env variables exist.
 - When env is absent, local mode persists generic development seed data in localStorage so the app remains runnable for UI verification. This is a deliberate development fallback, not the production persistence path.
 - `proxy.ts` protects routes when Supabase is configured. Registration is not exposed in the UI.
-- PWA shell is served through `public/manifest.webmanifest` and `public/sw.js`.
+- PWA shell is served through `public/manifest.webmanifest` and `public/sw.js`; navigation is network-first and falls back to cached pages or `public/offline.html` when the device is offline.
 
 ## Data flow
 

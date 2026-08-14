@@ -5,9 +5,18 @@ const nextConfig = {
   poweredByHeader: false,
   allowedDevOrigins: ["127.0.0.1"],
   async headers() {
-    return [{
-      source: "/(.*)",
-      headers: [
+    return [
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }]
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }]
+      },
+      {
+        source: "/(.*)",
+        headers: [
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "X-Frame-Options", value: "DENY" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -16,8 +25,9 @@ const nextConfig = {
         { key: "X-Download-Options", value: "noopen" },
         { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
         { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }
-      ]
-    }];
+        ]
+      }
+    ];
   },
   experimental: {
     optimizePackageImports: ["lucide-react"]

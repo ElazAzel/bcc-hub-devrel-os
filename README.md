@@ -31,7 +31,7 @@ To force local mode while keeping Supabase credentials in `.env.local`, set `NEX
 
 ## Supabase setup
 
-Apply migrations in filename order: `202608100001_initial.sql`, `202608100002_optimization.sql`, `202608110003_telegram_integration.sql`, `202608110004_fix_telegram_link_code.sql`, `202608110005_fix_telegram_link_code_return.sql`, `202608130001_comments_relationships.sql`, `202608130002_contact_directory.sql`, `202608130003_entity_hierarchy.sql`, `202608130004_sync_entity_hierarchy.sql`, then `202608140001_task_schedule.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The optimization migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`; the latest migrations add the secure employee directory, contact links, the canonical project/event/task/note hierarchy with database-side synchronization, and task scheduling fields. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
+Apply migrations in filename order: `202608100001_initial.sql`, `202608100002_optimization.sql`, `202608110003_telegram_integration.sql`, `202608110004_fix_telegram_link_code.sql`, `202608110005_fix_telegram_link_code_return.sql`, `202608130001_comments_relationships.sql`, `202608130002_contact_directory.sql`, `202608130003_entity_hierarchy.sql`, `202608130004_sync_entity_hierarchy.sql`, `202608140001_task_schedule.sql`, `202608140002_planning_and_mentions.sql`, then `202608140003_schedule_hierarchy.sql`. For the linked project use `supabase login`, `supabase link --project-ref njedalwewcsmsitrbwej`, then `supabase db push`. The optimization migration adds full-text search indexes, `workspace_search` and atomic `apply_ambassador_contribution`; the latest migrations add the secure employee directory, contact links, the canonical project/event/task/note hierarchy with database-side synchronization, task scheduling fields, shared planning periods and task timing explanations, and automatic parent-period expansion from child tasks to projects. Create an email/password user in Supabase Auth, then add the public URL and publishable key to `.env.local` and Vercel. Public registration is intentionally not exposed in the app.
 
 ## Telegram assistant
 
@@ -67,7 +67,7 @@ npm run test:e2e
 - Deterministic Project Health, Event Readiness, XP ledger confirmation and Tech Radar rings.
 - Cross-entity relations and Activity log.
 - Calendar aggregation and decision-support analytics.
-- PWA manifest, maskable icon, service worker and offline indicator.
+- PWA manifest, maskable icon, service worker, network-first navigation cache and offline fallback page with an online/offline indicator.
 - URL-persistent search, filters, pagination and list/board/radar views.
 - Russian interface with stable English enum values in storage.
 - Radix Dialog focus management, reduced-motion support and 44px touch targets.

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, BarChart3, CheckCircle2, CircleAlert, Clock3, Users } from "lucide-react";
 import { calculateProjectHealth } from "@/lib/health";
-import { listRecords } from "@/lib/data";
+import { loadAllRecords } from "@/lib/data";
 import { formatDateRu, ru } from "@/lib/i18n";
 import { type AnyRecord, type ModuleKey } from "@/lib/types";
 import { PageHeader } from "./page-header";
@@ -16,7 +16,7 @@ const keys: ModuleKey[] = ["projects", "tasks", "commitments", "events", "conten
 type AnalyticsData = Record<string, AnyRecord[]>;
 
 async function loadAnalytics(): Promise<AnalyticsData> {
-  const entries = await Promise.all(keys.map(async (key) => [key, (await listRecords(key, { pageSize: 100 })).items] as const));
+  const entries = await Promise.all(keys.map(async (key) => [key, await loadAllRecords(key)] as const));
   const data = Object.fromEntries(entries) as AnalyticsData;
   const tasks = data.tasks ?? [];
   const commitments = data.commitments ?? [];

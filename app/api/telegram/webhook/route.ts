@@ -117,6 +117,7 @@ async function createTask(admin: ReturnType<typeof getTelegramAdminClient> & obj
   ]);
   if (!project && !event) return sendMessage(chatId, "Проект или событие с таким ID не найдено. Получи ID в BCC HUB или командах списка.");
   const { data, error } = await admin.from("tasks").insert({ owner_id: ownerId, title: parsed.text.slice(0, 500), status: "Inbox", priority: "Normal", project_id: project?.id ?? event?.project_id ?? null, event_id: event?.id ?? null, source_type: "Telegram", source_label: telegramDisplayName(from ?? {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select("id,title").single();
+  if (!error && data) await recordTelegramActivity(admin, ownerId, "tasks", data.id, `Created from Telegram: ${data.title}`);
   if (error || !data) return sendMessage(chatId, "Не удалось создать задачу. Попробуй ещё раз.");
   return sendMessage(chatId, `<b>Задача сохранена</b>\n${escapeTelegramHtml(data.title)}\n\nID: <code>${escapeTelegramHtml(data.id)}</code>`);
 }
@@ -128,6 +129,7 @@ async function createNote(admin: ReturnType<typeof getTelegramAdminClient> & obj
   if (!task) return sendMessage(chatId, "Задача с таким ID не найдена. Получи полный ID командой /tasks.");
   const title = parsed.text.length > 80 ? `${parsed.text.slice(0, 77).trimEnd()}…` : parsed.text;
   const { data, error } = await admin.from("knowledge_cases").insert({ owner_id: ownerId, title, situation: parsed.text, task_id: task.id, trigger: "Telegram", people: telegramDisplayName(from ?? {}), created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select("id,title").single();
+  if (!error && data) await recordTelegramActivity(admin, ownerId, "knowledge", data.id, `Created from Telegram: ${data.title}`);
   if (error || !data) return sendMessage(chatId, "Не удалось сохранить заметку. Попробуй ещё раз.");
   return sendMessage(chatId, `<b>Заметка сохранена в Память</b>\n${escapeTelegramHtml(data.title)}\n\nID: <code>${escapeTelegramHtml(data.id)}</code>`);
 }
@@ -135,6 +137,7 @@ async function createNote(admin: ReturnType<typeof getTelegramAdminClient> & obj
 async function completeTask(admin: ReturnType<typeof getTelegramAdminClient> & object, chatId: number, ownerId: string, argument: string) {
   if (!isUuid(argument)) return sendMessage(chatId, "Нужен полный ID задачи из команды /tasks.");
   const { data, error } = await admin.from("tasks").update({ status: "Done", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("owner_id", ownerId).eq("id", argument).select("title").maybeSingle();
+  if (!error && data) await recordTelegramActivity(admin, ownerId, "tasks", argument, `Task completed from Telegram: ${data.title}`);
   if (error || !data) return sendMessage(chatId, "Задача не найдена в твоём рабочем пространстве.");
   return sendMessage(chatId, `<b>Готово. Задача закрыта</b>\n${escapeTelegramHtml(data.title)}`);
 }
@@ -152,6 +155,12 @@ async function sendContexts(admin: ReturnType<typeof getTelegramAdminClient> & o
   const eventLines = (events ?? []).map((item) => `• <b>Событие:</b> ${escapeTelegramHtml(item.title)}${item.date_start ? ` — ${escapeTelegramHtml(item.date_start)}` : ""}\n  ID: <code>${escapeTelegramHtml(item.id)}</code>`);
   if (!projectLines.length && !eventLines.length) return sendMessage(chatId, "Пока нет проектов или событий. Создай контекст в BCC HUB.");
   return sendMessage(chatId, `<b>Контексты для новых задач</b>\n\n${[...projectLines, ...eventLines].join("\n\n")}\n\nПример: <code>/task ID | Подтвердить спикера</code>`);
+}
+
+async function recordTelegramActivity(admin: ReturnType<typeof getTelegramAdminClient> & object, ownerId: string, entityType: string, entityId: string, message: string) {
+  if (!entityId) return;
+  const { error } = await admin.from("activity_log").insert({ owner_id: ownerId, entity_type: entityType, entity_id: entityId, action: "telegram update", message, created_at: new Date().toISOString() });
+  if (error) console.error("Unable to write Telegram activity", error.message);
 }
 
 async function sendMessage(chatId: number, text: string) {

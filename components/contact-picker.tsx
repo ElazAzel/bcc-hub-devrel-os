@@ -63,7 +63,6 @@ export function ContactPicker({ value, onChange, label = "С кем взаимо
   }
 
   async function createContact() {
-    if (!newContact.name.trim()) { setError("Укажи имя контакта."); return; }
     setSaving(true);
     setError("");
     try {
