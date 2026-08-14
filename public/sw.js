@@ -1,4 +1,4 @@
-const CACHE = "bcc-hub-devrel-static-v2";
+const CACHE = "bcc-hub-devrel-static-v3";
 const STATIC_ASSETS = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/maskable.svg"];
 
 self.addEventListener("install", (event) => {
@@ -27,6 +27,14 @@ self.addEventListener("fetch", (event) => {
     || url.pathname.startsWith("/icons/")
     || url.pathname === "/manifest.webmanifest";
   if (!cacheable) return;
+
+  if (url.pathname === "/manifest.webmanifest") {
+    event.respondWith(fetch(request).then((response) => {
+      if (response.ok) void caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+      return response;
+    }).catch(() => caches.match(request)));
+    return;
+  }
 
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((response) => {

@@ -6,6 +6,7 @@ import { displayName, getModule, type AnyRecord, type ConnectionEdge, type Conne
 import { calculateTaskReadiness } from "./readiness";
 import { employeeIdentity } from "./employee-import";
 import { allowedParentTypes, hierarchyTitle, isHierarchyNodeType, parentSelectionForRecord, recordFieldsForParent, relationForParent, type HierarchyNodeType, type HierarchyPathItem, type ParentSelection } from "./hierarchy";
+import { describeRecordChanges, describeRecordCreation } from "./activity";
 
 const supabase = getSupabaseBrowserClient();
 export const isCloudMode = Boolean(supabase);
@@ -135,7 +136,8 @@ export async function listRecords(module: ModuleKey, query: RecordListQuery = {}
   if (!supabase) {
     const rows = sortRows(readLocal(module).filter((row) => !row.archived_at && matchesQuery(row, module, query)), query);
     const start = (page - 1) * pageSize;
-    return { items: rows.slice(start, start + pageSize), total: rows.length, page, pageSize, hasMore: start + pageSize < rows.length };
+    const items = rows.slice(start, start + pageSize);
+    return { items: await decorateTaskRows(items), total: rows.length, page, pageSize, hasMore: start + pageSize < rows.length };
   }
   const allowedColumns = new Set(queryColumns(module, config));
   const selectColumns = Array.from(allowedColumns).join(",");
@@ -154,12 +156,31 @@ export async function listRecords(module: ModuleKey, query: RecordListQuery = {}
   const { data, error, count } = await request.range(start, start + pageSize - 1);
   if (error) throw toDataError(error);
   const total = count ?? data?.length ?? 0;
-  return { items: (data ?? []) as unknown as AnyRecord[], total, page, pageSize, hasMore: start + pageSize < total };
+  const items = (data ?? []) as unknown as AnyRecord[];
+  return { items: await decorateTaskRows(items), total, page, pageSize, hasMore: start + pageSize < total };
 }
 
 export async function loadRecords(module: ModuleKey, query: RecordListQuery = {}): Promise<AnyRecord[]> {
   const result = await listRecords(module, { pageSize: MAX_PAGE_SIZE, ...query });
   return result.items;
+}
+
+export async function loadRecordsByIds(module: ModuleKey, ids: string[]): Promise<AnyRecord[]> {
+  const config = getModule(module);
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!config || !uniqueIds.length) return [];
+  if (!supabase) return readLocal(module).filter((row) => uniqueIds.includes(row.id) && !row.archived_at);
+  const { data, error } = await supabase.from(config.table).select(queryColumns(module, config).join(",")).in("id", uniqueIds).is("archived_at", null).limit(MAX_PAGE_SIZE);
+  if (error) throw toDataError(error);
+  return (data ?? []) as unknown as AnyRecord[];
+}
+
+async function decorateTaskRows(rows: AnyRecord[]): Promise<AnyRecord[]> {
+  const parentIds = [...new Set(rows.map((row) => String(row.parent_task_id ?? "")).filter(Boolean))];
+  if (!parentIds.length) return rows;
+  const parents = await loadRecordsByIds("tasks", parentIds);
+  const titles = new Map(parents.map((parent) => [parent.id, String(parent.title ?? parent.name ?? "Основная задача")]));
+  return rows.map((row) => row.parent_task_id ? { ...row, parent_title: titles.get(String(row.parent_task_id)) ?? "Основная задача" } : row);
 }
 
 export async function loadRecord(module: ModuleKey, id: string): Promise<AnyRecord | null> {
@@ -270,6 +291,14 @@ async function ensureNoHierarchyCycle(childType: HierarchyNodeType, childId: str
   throw new Error("Иерархия слишком глубокая или содержит цикл");
 }
 
+async function validateHierarchyParent(childType: HierarchyNodeType, childId: string, parent: ParentSelection) {
+  if (!parent.parentType || !parent.parentId) return;
+  if (!allowedParentTypes(childType).includes(parent.parentType)) throw new Error("Invalid hierarchy parent type");
+  if (childType === parent.parentType && childId === parent.parentId) throw new Error("A record cannot be its own hierarchy parent");
+  await assertHierarchyRecord(parent.parentType, parent.parentId, "Parent record");
+  await ensureNoHierarchyCycle(childType, childId, parent.parentType, parent.parentId);
+}
+
 export async function setEntityParent(childType: HierarchyNodeType, childId: string, parent: ParentSelection) {
   if (!parent.parentType || !parent.parentId) {
     await clearEntityParent(childType, childId);
@@ -312,11 +341,13 @@ async function syncEntityParent(module: ModuleKey, record: AnyRecord) {
 }
 
 async function inheritProjectContext(input: Record<string, unknown>): Promise<Record<string, unknown>> {
-  if (input.project_id || (!input.event_id && !input.task_id && !input.parent_task_id)) return input;
-  const parentType: ModuleKey = input.event_id ? "events" : "tasks";
-  const parentId = String(input.event_id ?? input.task_id ?? input.parent_task_id);
+  const parentType: ModuleKey = input.parent_task_id || input.task_id ? "tasks" : "events";
+  const parentId = String(input.parent_task_id ?? input.task_id ?? input.event_id ?? "");
+  if (!parentId || (!input.event_id && !input.task_id && !input.parent_task_id)) return input;
   const parent = await loadRecord(parentType, parentId);
-  return parent?.project_id ? { ...input, project_id: parent.project_id } : input;
+  if (!parent) return input;
+  if (parentType === "tasks") return { ...input, project_id: parent.project_id ?? null, event_id: parent.event_id ?? null };
+  return { ...input, project_id: parent.project_id ?? null };
 }
 
 export async function loadHierarchyPath(module: HierarchyNodeType, id: string): Promise<HierarchyPathItem[]> {
@@ -341,12 +372,25 @@ export async function loadHierarchyPath(module: HierarchyNodeType, id: string): 
 
 export async function loadHierarchyChildren(parentType: HierarchyNodeType, parentId: string): Promise<Array<HierarchyPathItem & { relation: string; status: string | null }>> {
   const links = await loadEntityParentLinks({ parentType, parentId });
-  const children = await Promise.all(links.filter((link) => isHierarchyNodeType(link.child_type)).map(async (link) => {
+  const recordsByKey = new Map<string, AnyRecord>();
+  const groups = new Map<HierarchyNodeType, Set<string>>();
+  links.forEach((link) => {
+    if (!isHierarchyNodeType(link.child_type)) return;
     const childType = link.child_type as HierarchyNodeType;
-    const record = await loadRecord(childType, link.child_id);
-    return record ? { module: childType, id: link.child_id, title: hierarchyTitle(record), relation: link.relation_type, status: record.status ?? null } : null;
+    const ids = groups.get(childType) ?? new Set<string>();
+    ids.add(link.child_id);
+    groups.set(childType, ids);
+  });
+  await Promise.all([...groups.entries()].map(async ([childType, ids]) => {
+    const records = await loadRecords(childType, { pageSize: MAX_PAGE_SIZE });
+    records.filter((record) => ids.has(record.id)).forEach((record) => recordsByKey.set(`${childType}:${record.id}`, record));
   }));
-  return children.filter((child): child is HierarchyPathItem & { relation: string; status: string | null } => Boolean(child));
+  return links.flatMap((link) => {
+    if (!isHierarchyNodeType(link.child_type)) return [];
+    const childType = link.child_type as HierarchyNodeType;
+    const record = recordsByKey.get(`${childType}:${link.child_id}`);
+    return record ? [{ module: childType, id: link.child_id, title: hierarchyTitle(record), relation: link.relation_type, status: record.status ?? null }] : [];
+  });
 }
 
 export async function createRecords(module: ModuleKey, inputs: Array<Record<string, unknown>>): Promise<AnyRecord[]> {
@@ -358,7 +402,7 @@ export async function createRecords(module: ModuleKey, inputs: Array<Record<stri
   if (!supabase) {
     const records = normalizedInputs.map((input) => ({ id: crypto.randomUUID(), owner_id: ownerKey(), created_at: timestamp, updated_at: timestamp, ...input }));
     writeLocal(module, [...records, ...readLocal(module)]);
-    await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
+    await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: describeRecordCreation(module, record) })));
     await Promise.all(records.map((record) => syncEntityParent(module, record)));
     return records;
   }
@@ -369,7 +413,7 @@ export async function createRecords(module: ModuleKey, inputs: Array<Record<stri
   const { data, error } = await supabase.from(config.table).insert(normalizedInputs.map((input) => ({ ...input, owner_id: ownerId, created_at: timestamp, updated_at: timestamp }))).select();
   if (error) throw toDataError(error);
   const records = (data ?? []) as AnyRecord[];
-  await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: `${displayName(record)} создано` })));
+  await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: describeRecordCreation(module, record) })));
   await Promise.all(records.map((record) => syncEntityParent(module, record)));
   return records;
 }
@@ -392,19 +436,22 @@ export async function updateRecord(module: ModuleKey, id: string, input: Record<
       if (refreshed) return refreshed;
     }
   }
+  const existing = await loadRecord(module, id);
+  const normalizedInput = await inheritProjectContext(input);
+  if (isHierarchyNodeType(module)) await validateHierarchyParent(module, id, parentSelectionForRecord(module, normalizedInput as AnyRecord));
   const timestamp = new Date().toISOString();
   if (!supabase) {
-    const rows = readLocal(module).map((row) => row.id === id ? { ...row, ...input, updated_at: timestamp } : row);
+    const rows = readLocal(module).map((row) => row.id === id ? { ...row, ...normalizedInput, updated_at: timestamp } : row);
     writeLocal(module, rows);
     const updated = rows.find((row) => row.id === id);
     if (!updated) throw new Error("Запись не найдена");
-    await logActivity("entity updated", module, id, `${displayName(updated)} обновлено`);
+    await logActivity("entity updated", module, id, `${displayName(updated)} обновлено. ${describeRecordChanges(module, existing ?? {}, updated)}`);
     await syncEntityParent(module, updated);
     return updated;
   }
-  const { data, error } = await supabase.from(config.table).update({ ...input, updated_at: timestamp }).eq("id", id).select().single();
+  const { data, error } = await supabase.from(config.table).update({ ...normalizedInput, updated_at: timestamp }).eq("id", id).select().single();
   if (error) throw toDataError(error);
-  await logActivity("entity updated", module, id, `${displayName(data as AnyRecord)} обновлено`);
+  await logActivity("entity updated", module, id, `${displayName(data as AnyRecord)} обновлено. ${describeRecordChanges(module, existing ?? {}, data as AnyRecord)}`);
   await syncEntityParent(module, data as AnyRecord);
   return data as AnyRecord;
 }
@@ -689,24 +736,35 @@ export async function loadConnectionGraph(module: ModuleKey, id: string): Promis
   reverseRows.forEach(({ childModule, field, rows }) => rows.forEach((row) => addEdge(module, id, childModule, row.id, "CONTEXT", `reverse:${childModule}:${field}:${row.id}`)));
 
   const endpointKeys = [...nodeCandidates.keys()].filter((key) => key !== rootKey).slice(0, 30);
-  const endpointRecords = await Promise.all(endpointKeys.map(async (key) => {
+  const endpointGroups = new Map<ModuleKey, Set<string>>();
+  endpointKeys.forEach((key) => {
     const [endpointModule, endpointId] = key.split(":");
-    if (!isModuleKey(endpointModule) || !endpointId) return null;
-    const record = await loadRecord(endpointModule, endpointId);
-    return record ? { key, module: endpointModule, id: endpointId, record } : null;
-  }));
+    if (!isModuleKey(endpointModule) || !endpointId) return;
+    const ids = endpointGroups.get(endpointModule) ?? new Set<string>();
+    ids.add(endpointId);
+    endpointGroups.set(endpointModule, ids);
+  });
+  const endpointRecords = (await Promise.all([...endpointGroups.entries()].map(async ([endpointModule, ids]) => {
+    const records = await loadRecords(endpointModule, { pageSize: 100 });
+    return [...ids].map((endpointId) => {
+      const record = records.find((candidate) => candidate.id === endpointId);
+      return record ? { key: connectionKey(endpointModule, endpointId), module: endpointModule, id: endpointId, record } : null;
+    });
+  }))).flat();
   const nodes: ConnectionNode[] = [rootNode];
   for (const endpoint of endpointRecords) {
     if (!endpoint) continue;
     const record = endpoint.record;
-    nodes.push({ key: endpoint.key, module: endpoint.module, id: endpoint.id, title: displayName(record), subtitle: String(record.description ?? record.topic ?? record.position ?? ""), status: record.status ?? record.ring ?? record.relationship_state });
+    nodes.push({ key: endpoint.key, module: endpoint.module, id: endpoint.id, title: displayName(record), subtitle: String(record.description ?? record.topic ?? record.position ?? ""), status: record.status != null ? String(record.status) : record.ring != null ? String(record.ring) : record.relationship_state != null ? String(record.relationship_state) : null });
   }
 
   const taskNodes = nodes.filter((node) => node.module === "tasks");
-  await Promise.all(taskNodes.map(async (node) => {
-    const children = await loadSubtasks(node.id);
-    node.readiness = calculateTaskReadiness(children);
-  }));
+  if (taskNodes.length) {
+    const taskRows = await loadRecords("tasks", { pageSize: 100 });
+    taskNodes.forEach((node) => {
+      node.readiness = calculateTaskReadiness(taskRows.filter((task) => task.parent_task_id === node.id));
+    });
+  }
   return { nodes, edges: edges.filter((edge, index, all) => all.findIndex((candidate) => candidate.key === edge.key) === index) };
 }
 

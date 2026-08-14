@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateTaskReadiness, readinessLabel } from "./readiness";
+import { calculateEventReadiness, calculateTaskReadiness, readinessLabel } from "./readiness";
 
 const base = { created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z" };
 
@@ -23,5 +23,17 @@ describe("task readiness", () => {
     const result = calculateTaskReadiness([]);
     expect(result).toMatchObject({ total: 0, percent: 0 });
     expect(readinessLabel(result)).toBe("Субзадач пока нет");
+  });
+
+  it("caps event readiness when a critical task is not ready", () => {
+    const result = calculateEventReadiness(
+      { ...base, id: "event-1", registration_target: 80, registrations: 60 },
+      [{ ...base, id: "critical", priority: "Critical", status: "Blocked" }],
+    );
+    expect(result).toMatchObject({ registrationPercent: 75, criticalTaskPercent: 0, percent: 0 });
+  });
+
+  it("uses registration progress when there are no critical tasks", () => {
+    expect(calculateEventReadiness({ ...base, id: "event-2", registration_target: 80, registrations: 42 }, [])).toMatchObject({ percent: 53, criticalTaskPercent: 100 });
   });
 });

@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, ExternalLink, Plus, Sparkles } from "lucide-react";
 import { createRecord, createRecords, findPotentialDuplicates, replaceEntityContacts } from "@/lib/data";
 import { fieldLabel, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { hierarchySupports, recordFieldsForParent, type ParentSelection } from "@/lib/hierarchy";
-import { getModule, type AnyRecord, type FieldConfig, type ModuleKey } from "@/lib/types";
+import { getModule, isFieldVisible, type AnyRecord, type FieldConfig, type ModuleKey } from "@/lib/types";
 import { Button, Field, Input, Modal, Select, Textarea } from "./ui";
 import { ContactPicker } from "./contact-picker";
 import { ContextPicker } from "./context-picker";
@@ -16,7 +16,7 @@ const meetupChecklist = ["Аудитория", "Тема и стек", "Подт
 
 function initialValues(module: ModuleKey) {
   const config = getModule(module);
-  return Object.fromEntries((config?.fields ?? []).map((field) => [field.key, field.type === "select" ? field.options?.[0] ?? "" : ""]));
+  return Object.fromEntries((config?.fields ?? []).map((field) => [field.key, field.type === "select" && field.key !== "meeting_mode" ? field.options?.[0] ?? "" : ""]));
 }
 
 function recordName(record: AnyRecord) {
@@ -33,12 +33,14 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
   const [contactIds, setContactIds] = useState<string[]>([]);
   const [parent, setParent] = useState<ParentSelection>({});
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<AnyRecord | null>(null);
   const config = (module ? getModule(module) : getModule("tasks"))!;
 
   useEffect(() => {
     if (!open) return;
+    savingRef.current = false;
     setModule(initialModule ?? null);
     setValues(initialModule ? initialValues(initialModule) : {});
     setShowDetails(false);
@@ -51,16 +53,25 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
     setCreated(null);
   }, [open, initialModule]);
 
+  useEffect(() => {
+    if (!open || !module) return;
+    const frame = window.requestAnimationFrame(() => {
+      const firstField = config.fields.find((field) => field.type !== "select" || field.required) ?? config.fields[0];
+      document.getElementById(`quick-${firstField?.key ?? ""}`)?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [config, module, open]);
+
   const fields = useMemo(() => {
-    const all = config?.fields ?? [];
+    const all = (config?.fields ?? []).filter((field) => isFieldVisible(module ?? "tasks", field, values));
     return showDetails ? all : all.slice(0, 6);
-  }, [config, showDetails]);
+  }, [config, module, showDetails, values]);
 
   function setField(key: string, value: string) { setValues((current) => ({ ...current, [key]: value })); }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!module || !config) return;
+    if (!module || !config || savingRef.current) return;
     const missing = config.fields.find((field) => field.required && !values[field.key]?.trim());
     if (missing) {
       setError(`Заполни поле «${fieldLabel(missing)}».`);
@@ -71,24 +82,30 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
       setError(module === "knowledge" ? "Привяжи заметку к проекту, событию или задаче." : "Привяжи задачу к проекту, событию или другой задаче.");
       return;
     }
-    const recordInput = { ...values, ...recordFieldsForParent(module, parent) };
+    const recordInput = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value.trim()]));
+    if (module === "tasks") {
+      if (recordInput.meeting_mode === "online") recordInput.location = "";
+      if (recordInput.meeting_mode === "offline") recordInput.meeting_url = "";
+    }
+    const normalizedInput = { ...recordInput, ...recordFieldsForParent(module, parent) };
+    savingRef.current = true;
     setSaving(true);
     setError("");
     try {
       if (!duplicateAcknowledged) {
-        const matches = await findPotentialDuplicates(module, values);
-        if (matches.length) { setDuplicates(matches); setSaving(false); return; }
+        const matches = await findPotentialDuplicates(module, recordInput);
+        if (matches.length) { setDuplicates(matches); savingRef.current = false; setSaving(false); return; }
       }
-      const createdRecord = await createRecord(module, recordInput);
+      const createdRecord = await createRecord(module, normalizedInput);
       if (module !== "people" && contactIds.length) await replaceEntityContacts(module, createdRecord.id, contactIds);
-      if (module === "events" && values.type === "Meetup" && meetupTemplate) {
+      if (module === "events" && recordInput.type === "Meetup" && meetupTemplate) {
         await createRecords("tasks", meetupChecklist.map((title) => ({ title, status: "Planned", priority: "Normal", due_date: values.date_start || undefined, source_type: "Event", source_label: recordName(createdRecord), event_id: createdRecord.id })));
       }
       setCreated(createdRecord);
       window.dispatchEvent(new CustomEvent("bcc:data-changed", { detail: module }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось сохранить запись. Проверь соединение и повтори попытку.");
-    } finally { setSaving(false); }
+    } finally { savingRef.current = false; setSaving(false); }
   }
 
   if (!config && module) return null;
@@ -100,5 +117,5 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
 function QuickField({ field, value, onChange }: { field: FieldConfig; value: string; onChange: (value: string) => void }) {
   const id = `quick-${field.key}`;
   const common = { id, name: field.key, required: field.required };
-  return <Field label={fieldLabel(field)}>{field.type === "textarea" ? <Textarea {...common} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} /> : field.type === "select" ? <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input {...common} type={field.type === "date" ? "date" : field.type === "number" ? "number" : field.type === "url" ? "url" : field.key === "email" ? "email" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} spellCheck={field.key === "email" || field.type === "url" ? false : undefined} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
+  return <Field label={fieldLabel(field)}>{field.type === "textarea" ? <Textarea {...common} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} /> : field.type === "select" ? <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input {...common} type={field.type === "date" ? "date" : field.type === "time" ? "time" : field.type === "number" ? "number" : field.type === "url" ? "url" : field.key === "email" ? "email" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} spellCheck={field.key === "email" || field.type === "url" ? false : undefined} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
 }

@@ -17,6 +17,14 @@ describe("Telegram commands", () => {
     expect(parseContextArgument("только текст")).toBeNull();
   });
 
+  it("rejects malformed commands and empty context arguments", () => {
+    expect(parseTelegramCommand("/")).toBeNull();
+    expect(parseTelegramCommand("обычный текст")).toBeNull();
+    expect(parseContextArgument("| текст")).toBeNull();
+    expect(parseContextArgument("context | ")).toBeNull();
+    expect(parseContextArgument(`context | ${"x".repeat(2001)}`)).toBeNull();
+  });
+
   it("keeps Telegram replies below the API limit", () => {
     expect(truncateTelegramText("x".repeat(4000))).toHaveLength(3800);
   });

@@ -33,3 +33,5 @@ Use the Supabase dashboard or `supabase db dump` from an authenticated developme
 `202608130003_entity_hierarchy.sql` adds missing context columns, creates the owner-scoped `entity_parent_links` table with one direct parent per child, backfills existing project/event/task/note context, and adds RLS. The application validates allowed parent types and rejects cycles before saving. The table is the canonical tree; direct context columns are kept for fast list filters and dashboard aggregates.
 
 `202608130004_sync_entity_hierarchy.sql` adds a database trigger for projects, events, tasks, interactions, commitments, content, documents, decisions and notes. It keeps the canonical parent link synchronized for server-side writes such as Telegram, including when a record is moved or detached.
+
+`202608140001_task_schedule.sql` adds optional task scheduling fields: start/end time, meeting mode, online meeting URL and offline location. The meeting mode constraint accepts `online` or `offline`; all fields are nullable so existing tasks remain valid.

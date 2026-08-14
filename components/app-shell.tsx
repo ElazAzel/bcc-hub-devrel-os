@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Bell, CalendarDays, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Database, FileText, FolderKanban, Home, LogOut, Menu, MoreHorizontal, Newspaper, Plus, Radar, Search, Settings, Users, X, Zap } from "lucide-react";
@@ -71,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
     setOnline(navigator.onLine);
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js?v=2").catch(() => undefined);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js?v=3").catch(() => undefined);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("bcc:quick-add", onQuickAdd);
@@ -166,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function BrandMark() {
-  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-[0_7px_16px_rgba(137,52,249,0.2)]"><img src="/icons/icon.svg" alt="" loading="lazy" className="h-9 w-9 rounded-xl" /></span>;
+  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-[0_7px_16px_rgba(137,52,249,0.2)]"><Image src="/icons/icon.svg" alt="" width={36} height={36} sizes="36px" className="h-9 w-9 rounded-xl" /></span>;
 }
 
 function BookIcon() { return <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/15"><Database size={13} /></span>; }
