@@ -65,11 +65,14 @@ export function recordFieldsForParent(module: ModuleKey, selection: ParentSelect
     return {};
   }
   if (module === "projects") return { parent_project_id: parentType === "projects" ? parentId : null };
-  if (module === "tasks") return {
-    parent_task_id: parentType === "tasks" ? parentId : null,
-    project_id: parentType === "projects" ? parentId : null,
-    event_id: parentType === "events" ? parentId : null
-  };
+  if (module === "tasks") {
+    if (parentType === "tasks") return { parent_task_id: parentId };
+    return {
+      parent_task_id: null,
+      project_id: parentType === "projects" ? parentId : null,
+      event_id: parentType === "events" ? parentId : null
+    };
+  }
   if (module === "interactions") return {
     task_id: parentType === "tasks" ? parentId : null,
     event_id: parentType === "events" ? parentId : null,

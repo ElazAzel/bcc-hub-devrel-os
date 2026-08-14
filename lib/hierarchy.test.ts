@@ -12,6 +12,7 @@ describe("work hierarchy", () => {
   it("maps a selected parent to stable database fields", () => {
     expect(recordFieldsForParent("knowledge", { parentType: "tasks", parentId: "task-1" })).toEqual({ task_id: "task-1", event_id: null, project_id: null });
     expect(recordFieldsForParent("tasks", { parentType: "events", parentId: "event-1" })).toEqual({ parent_task_id: null, project_id: null, event_id: "event-1" });
+    expect(recordFieldsForParent("tasks", { parentType: "tasks", parentId: "parent-task" })).toEqual({ parent_task_id: "parent-task" });
   });
 
   it("keeps parent choices understandable by module", () => {

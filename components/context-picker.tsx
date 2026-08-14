@@ -43,7 +43,7 @@ export function ContextPicker({ module, value, onChange, currentId, required = f
       <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(130px,0.7fr)_minmax(0,1.5fr)]">
         <Select aria-label="Тип контекста" value={selectedType} onChange={(event) => onChange(event.target.value ? { parentType: event.target.value as HierarchyNodeType, parentId: "" } : {})}>
           <option value="">Без родителя</option>
-          {parentTypes.map((type) => <option key={type} value={type}>{hierarchyTypeLabel(type)}</option>)}
+          {parentTypes.map((type) => <option key={type} value={type}>{parentLabel(module, type)}</option>)}
         </Select>
         <Select aria-label="Запись контекста" disabled={!selectedType || loading} value={value.parentId ?? ""} onChange={(event) => onChange({ parentType: selectedType || undefined, parentId: event.target.value || undefined })}>
           <option value="">{loading ? "Загружаем записи…" : "Выбери запись"}</option>
@@ -53,4 +53,9 @@ export function ContextPicker({ module, value, onChange, currentId, required = f
     </div>
     {error && <span className="block text-xs text-[#AF3030]" role="alert">{error}</span>}
   </Field>;
+}
+
+function parentLabel(module: ModuleKey, type: HierarchyNodeType) {
+  if (module === "tasks" && type === "tasks") return "Основная задача";
+  return hierarchyTypeLabel(type);
 }

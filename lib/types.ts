@@ -13,6 +13,14 @@ export type AnyRecord = {
   ring?: string | null;
   relationship_state?: string | null;
   change_state?: string | null;
+  parent_title?: string | null;
+  parent_task_id?: string | null;
+  start_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  meeting_mode?: "online" | "offline" | string | null;
+  meeting_url?: string | null;
+  location?: string | null;
   status?: string | null;
   priority?: string | null;
   due_date?: string | null;
@@ -162,11 +170,18 @@ export type ModuleConfig = {
 export type FieldConfig = {
   key: string;
   label: string;
-  type?: "text" | "textarea" | "date" | "select" | "number" | "url";
+  type?: "text" | "textarea" | "date" | "time" | "select" | "number" | "url";
   placeholder?: string;
   options?: string[];
   required?: boolean;
 };
+
+export function isFieldVisible(module: ModuleKey, field: FieldConfig, values: Record<string, unknown>): boolean {
+  if (module !== "tasks") return true;
+  if (field.key === "meeting_url") return values.meeting_mode === "online";
+  if (field.key === "location") return values.meeting_mode === "offline";
+  return true;
+}
 
 export const MODULES: Record<ModuleKey, ModuleConfig> = {
   projects: {
@@ -194,7 +209,13 @@ export const MODULES: Record<ModuleKey, ModuleConfig> = {
       { key: "description", label: "Описание", type: "textarea" },
       { key: "status", label: "Статус", type: "select", options: ["Inbox", "Planned", "In Progress", "Waiting", "Blocked", "Done", "Cancelled"] },
       { key: "priority", label: "Приоритет", type: "select", options: ["Low", "Normal", "High", "Critical"] },
+      { key: "start_date", label: "Дата старта", type: "date" },
       { key: "due_date", label: "Срок", type: "date" },
+      { key: "start_time", label: "Время начала", type: "time" },
+      { key: "end_time", label: "Время окончания", type: "time" },
+      { key: "meeting_mode", label: "Формат встречи", type: "select", options: ["online", "offline"] },
+      { key: "meeting_url", label: "Ссылка на встречу", type: "url", placeholder: "https://meet.example.com/..." },
+      { key: "location", label: "Локация", placeholder: "Офис, зал или адрес" },
       { key: "source_type", label: "Источник", type: "select", options: ["Meeting", "Teams", "Email", "Call", "Manager", "Strategy", "Personal", "Event", "Ambassador", "Community", "Other"] },
       { key: "source_label", label: "Источник / ссылка", placeholder: "Встреча, письмо или ссылка" },
       { key: "next_action", label: "Следующий шаг", placeholder: "Какой результат нужен?" }
@@ -298,6 +319,10 @@ export function getModule(key: string): ModuleConfig | undefined {
 }
 
 export function displayName(record: AnyRecord): string {
+  if (record.parent_task_id) {
+    const title = String(record.title ?? record.name ?? "Task");
+    return `↳ ${title}${record.parent_title ? ` · ${String(record.parent_title)}` : ""}`;
+  }
   if (record.title) return String(record.title);
   if (record.name) return String(record.name);
   return [record.first_name, record.last_name].filter(Boolean).join(" ") || "Без названия";
