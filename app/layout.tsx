@@ -6,7 +6,11 @@ export const metadata: Metadata = {
   title: "BCC HUB DevRel OS",
   description: "Персональный центр управления DevRel-контекстом BCC HUB",
   applicationName: "BCC HUB DevRel OS",
-  manifest: "/manifest.webmanifest"
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icons/icon.svg",
+    apple: "/icons/icon.svg"
+  }
 };
 
 export const viewport: Viewport = {
@@ -17,5 +21,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang="ru" data-scroll-behavior="smooth"><head><link rel="apple-touch-icon" href="/icons/icon.svg" /></head><body><QueryProvider>{children}</QueryProvider></body></html>;
+  return <html lang="ru" data-scroll-behavior="smooth"><body><QueryProvider>{children}</QueryProvider></body></html>;
 }
