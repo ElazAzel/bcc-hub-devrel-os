@@ -6,7 +6,6 @@ import { ArrowLeft, Check, ExternalLink, Plus, Sparkles } from "lucide-react";
 import { createRecord, createRecords, findPotentialDuplicates, replaceEntityContacts } from "@/lib/data";
 import { fieldLabel, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { hierarchySupports, recordFieldsForParent, type ParentSelection } from "@/lib/hierarchy";
-import { calculateTaskTiming } from "@/lib/task-timing";
 import { getModule, isFieldVisible, type AnyRecord, type FieldConfig, type ModuleKey } from "@/lib/types";
 import { Button, Field, Input, Modal, Select } from "./ui";
 import { ContactPicker } from "./contact-picker";
@@ -58,7 +57,7 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
   useEffect(() => {
     if (!open || !module) return;
     const frame = window.requestAnimationFrame(() => {
-      const firstField = config.fields.find((field) => field.type !== "select" || field.required) ?? config.fields[0];
+      const firstField = config.fields.find((field) => field.type !== "select") ?? config.fields[0];
       document.getElementById(`quick-${firstField?.key ?? ""}`)?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -74,25 +73,10 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!module || !config || savingRef.current) return;
-    const missing = config.fields.find((field) => field.required && !values[field.key]?.trim());
-    if (missing) {
-      setError(`Заполни поле «${fieldLabel(missing)}».`);
-      window.requestAnimationFrame(() => document.getElementById(`quick-${missing.key}`)?.focus());
-      return;
-    }
-    if ((module === "tasks" || module === "knowledge") && (!parent.parentType || !parent.parentId)) {
-      setError(module === "knowledge" ? "Привяжи заметку к проекту, событию или задаче." : "Привяжи задачу к проекту, событию или другой задаче.");
-      return;
-    }
     const recordInput = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value.trim()]));
     if (module === "tasks") {
       if (recordInput.meeting_mode === "online") recordInput.location = "";
       if (recordInput.meeting_mode === "offline") recordInput.meeting_url = "";
-      if (calculateTaskTiming(recordInput).requiresReason) {
-        setShowDetails(true);
-        setError("Добавь комментарий, почему задача завершилась раньше или позже срока.");
-        return;
-      }
     }
     const normalizedInput = { ...recordInput, ...recordFieldsForParent(module, parent) };
     savingRef.current = true;
@@ -123,6 +107,6 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
 
 function QuickField({ field, value, onChange }: { field: FieldConfig; value: string; onChange: (value: string) => void }) {
   const id = `quick-${field.key}`;
-  const common = { id, name: field.key, required: field.required };
+  const common = { id, name: field.key };
   return <Field label={fieldLabel(field)}>{field.type === "textarea" ? <MentionTextarea {...common} value={value} onChange={onChange} placeholder={field.placeholder ? ru(field.placeholder) : undefined} /> : field.type === "select" ? <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input {...common} type={field.type === "date" ? "date" : field.type === "time" ? "time" : field.type === "number" ? "number" : field.type === "url" ? "url" : field.key === "email" ? "email" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} spellCheck={field.key === "email" || field.type === "url" ? false : undefined} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
 }

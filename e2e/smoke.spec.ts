@@ -40,6 +40,25 @@ test("quick add opens from the mobile navigation", async ({ page }) => {
   await expect(page.getByRole("dialog")).toContainText("Быстрое добавление");
 });
 
+test("quick add allows records with optional fields left blank", async ({ page }) => {
+  await page.goto("/");
+  const quickAdd = page.getByRole("button", { name: "Быстро добавить" }).last();
+  await quickAdd.click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: /^проект$/i }).click();
+  await dialog.getByRole("button", { name: "Создать", exact: true }).click();
+  await expect(dialog).toContainText("Запись создана");
+  await dialog.getByText("Закрыть", { exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await quickAdd.click();
+  const taskDialog = page.getByRole("dialog");
+  await taskDialog.getByRole("button", { name: /^задачу$/i }).click();
+  await taskDialog.getByRole("button", { name: "Создать", exact: true }).click();
+  await expect(taskDialog).toContainText("Запись создана");
+  await taskDialog.getByText("Закрыть", { exact: true }).click();
+  await expect(taskDialog).toBeHidden();
+});
+
 test("core records persist and global search opens a detail page", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/");

@@ -37,7 +37,7 @@ export function ContextPicker({ module, value, onChange, currentId, required = f
   const visibleRows = (selectedType ? rows[selectedType] ?? [] : []).filter((row) => !(selectedType === module && row.id === currentId));
 
   if (!parentTypes.length) return null;
-  return <Field label={`Контекст${required ? " *" : ""}`} hint={required ? "Новая запись должна быть внутри проекта, события или задачи." : "Выбери, к чему относится эта запись. Это сохранит её в рабочем дереве."}>
+  return <Field label="Контекст" hint="Выбери, к чему относится эта запись, если хочешь сохранить её в рабочем дереве.">
     <div className="flex items-center gap-2 rounded-2xl bg-bcc-soft p-3">
       <FolderTree size={17} className="shrink-0 text-bcc-violet" aria-hidden="true" />
       <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(130px,0.7fr)_minmax(0,1.5fr)]">
