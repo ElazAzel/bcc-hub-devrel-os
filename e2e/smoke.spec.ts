@@ -64,6 +64,13 @@ test("quick add allows records with optional fields left blank", async ({ page }
   await quickAdd.click();
   const taskDialog = page.getByRole("dialog");
   await taskDialog.getByRole("button", { name: /^задачу$/i }).click();
+  await expect(taskDialog.getByLabel("Статус")).toHaveValue("");
+  await expect(taskDialog.getByLabel("Приоритет")).toHaveValue("");
+  await taskDialog.getByRole("button", { name: /Показать дополнительные поля/ }).click();
+  await expect(taskDialog.locator("[required]")).toHaveCount(0);
+  await expect(taskDialog.getByLabel("Время начала")).toHaveValue("");
+  await expect(taskDialog.getByLabel("Время окончания")).toHaveValue("");
+  await expect(taskDialog.getByLabel("Формат встречи")).toHaveValue("");
   await taskDialog.getByRole("button", { name: "Создать", exact: true }).click();
   await expect(taskDialog).toContainText("Запись создана");
   await taskDialog.getByText("Закрыть", { exact: true }).click();

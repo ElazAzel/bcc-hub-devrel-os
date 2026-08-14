@@ -365,11 +365,31 @@ async function inheritProjectContext(input: Record<string, unknown>): Promise<Re
   return { ...input, project_id: parent.project_id ?? null };
 }
 
+const nonNullableLabelField: Partial<Record<ModuleKey, "title" | "name">> = {
+  projects: "title",
+  tasks: "title",
+  organizations: "name",
+  interactions: "title",
+  commitments: "title",
+  events: "title",
+  content: "title",
+  communities: "name",
+  ambassadors: "name",
+  "tech-radar": "name",
+  documents: "title",
+  decisions: "title",
+  knowledge: "title"
+};
+
 function normalizeRecordInput(module: ModuleKey, input: Record<string, unknown>, existing?: AnyRecord | null): Record<string, unknown> {
   const next = { ...input };
-  ["start_date", "end_date", "schedule_variance_reason"].forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(next, key) && next[key] === "") next[key] = null;
+  Object.entries(next).forEach(([key, value]) => {
+    if (value !== "") return;
+    if (existing) next[key] = null;
+    else delete next[key];
   });
+  const labelField = nonNullableLabelField[module];
+  if (labelField && !String(next[labelField] ?? existing?.[labelField] ?? "").trim()) next[labelField] = "Без названия";
   const start = String(next.start_date ?? existing?.start_date ?? "");
   const end = String(next.end_date ?? existing?.end_date ?? "");
   if (start && end && start > end) throw new Error("Дата окончания не может быть раньше даты старта");

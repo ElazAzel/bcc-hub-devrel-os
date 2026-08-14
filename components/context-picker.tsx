@@ -12,10 +12,9 @@ type ContextPickerProps = {
   value: ParentSelection;
   onChange: (value: ParentSelection) => void;
   currentId?: string;
-  required?: boolean;
 };
 
-export function ContextPicker({ module, value, onChange, currentId, required = false }: ContextPickerProps) {
+export function ContextPicker({ module, value, onChange, currentId }: ContextPickerProps) {
   const parentTypes = useMemo(() => allowedParentTypes(module), [module]);
   const [rows, setRows] = useState<Record<HierarchyNodeType, AnyRecord[]>>({} as Record<HierarchyNodeType, AnyRecord[]>);
   const [loading, setLoading] = useState(false);
