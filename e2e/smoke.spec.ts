@@ -46,9 +46,8 @@ test("core routes render without browser errors", async ({ page }) => {
 test("calendar switches between list and calendar views", async ({ page }) => {
   await page.goto("/calendar");
 
-  await expect(page.getByRole("tab", { name: "Список" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: "Календарь" }).click();
-  await expect(page).toHaveURL(/\/calendar\?.*view=calendar/);
+  await expect(page.getByRole("tab", { name: "Календарь" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("calendar-grid")).toBeVisible();
   await expect(page.getByRole("button", { name: "Предыдущий месяц" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Следующий месяц" })).toBeVisible();
 
@@ -57,6 +56,7 @@ test("calendar switches between list and calendar views", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Список" }).click();
   await expect(page).toHaveURL(/\/calendar\?.*view=list/);
+  await expect(page.getByRole("tab", { name: "Список" })).toHaveAttribute("aria-selected", "true");
 });
 
 test("quick add opens from the mobile navigation", async ({ page }) => {

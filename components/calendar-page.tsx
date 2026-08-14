@@ -87,7 +87,7 @@ export function CalendarPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const view: CalendarView = searchParams.get("view") === "calendar" ? "calendar" : "list";
+  const view: CalendarView = searchParams.get("view") === "list" ? "list" : "calendar";
   const selectedMonth = formatMonthKey(parseMonth(searchParams.get("month")));
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -164,7 +164,7 @@ function CalendarGrid({ items, month }: { items: CalendarItem[]; month: string }
     return acc;
   }, {});
   const today = dateKey(new Date());
-  return <div className="surface overflow-hidden">
+  return <div className="surface overflow-hidden" data-testid="calendar-grid" aria-label="Месячный календарь">
     <div className="grid grid-cols-7 border-b border-bcc-border bg-bcc-soft/60">{weekdays.map((day) => <div key={day} className="px-1 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8A8A90] sm:px-3 sm:py-3 sm:text-xs">{day}</div>)}</div>
     <div className="grid grid-cols-7">
       {days.map((day) => {
