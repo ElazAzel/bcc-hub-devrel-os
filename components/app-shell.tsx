@@ -72,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("online", update);
     window.addEventListener("offline", update);
     setOnline(navigator.onLine);
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js?v=4").catch(() => undefined);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js?v=5").catch(() => undefined);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("bcc:quick-add", onQuickAdd);

@@ -1,4 +1,4 @@
-const CACHE = "bcc-hub-devrel-static-v4";
+const CACHE = "bcc-hub-devrel-static-v5";
 const STATIC_ASSETS = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/maskable.svg", "/offline.html"];
 
 self.addEventListener("install", (event) => {
