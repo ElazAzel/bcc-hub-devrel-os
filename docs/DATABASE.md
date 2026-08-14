@@ -37,3 +37,5 @@ Use the Supabase dashboard or `supabase db dump` from an authenticated developme
 `202608140001_task_schedule.sql` adds optional task scheduling fields: start/end time, meeting mode, online meeting URL and offline location. The meeting mode constraint accepts `online` or `offline`; all fields are nullable so existing tasks remain valid.
 
 `202608140002_planning_and_mentions.sql` adds optional `start_date` and `end_date` to the workspace entities, backfills existing project/task/event periods, and adds `schedule_variance_reason` for tasks. Task completion timing is derived from `start_date`, `completed_at` and `due_date`; description mentions are stored as safe inline entity references such as `@[Demo Speaker](people:uuid)`.
+
+`202608140003_schedule_hierarchy.sql` keeps parent planning periods at least as wide as their children. A subtask expands its parent task, a task expands its event or project, and a nested project expands its parent project. Existing parent periods are widened during migration; periods are never shortened automatically.

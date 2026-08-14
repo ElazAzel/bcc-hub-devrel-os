@@ -4,6 +4,7 @@ import { findDuplicateCandidates, normalizeText, rankSearchRecord } from "./sear
 import { toDataError } from "./errors";
 import { displayName, getModule, type AnyRecord, type ConnectionEdge, type ConnectionNode, type EntityComment, type EntityContactLink, type EntityParentLink, type EntityRelation, type EmployeeImportRow, type ModuleKey, type RecordListQuery, type RecordPage, type TaskReadiness, type WorkspaceSearchResult } from "./types";
 import { calculateTaskReadiness } from "./readiness";
+import { expandScheduleRange } from "./schedule-hierarchy";
 import { employeeIdentity } from "./employee-import";
 import { allowedParentTypes, hierarchyTitle, isHierarchyNodeType, parentSelectionForRecord, recordFieldsForParent, relationForParent, type HierarchyNodeType, type HierarchyPathItem, type ParentSelection } from "./hierarchy";
 import { describeRecordChanges, describeRecordCreation } from "./activity";
@@ -376,6 +377,37 @@ function normalizeRecordInput(module: ModuleKey, input: Record<string, unknown>,
   return next;
 }
 
+async function syncScheduleAncestors(module: ModuleKey, record: AnyRecord, visited = new Set<string>()): Promise<void> {
+  const recordKey = `${module}:${record.id}`;
+  if (visited.has(recordKey)) return;
+  visited.add(recordKey);
+
+  async function expand(parentModule: ModuleKey, parentId: unknown) {
+    if (!parentId) return;
+    const parent = await loadRecord(parentModule, String(parentId));
+    if (!parent) return;
+    const expansion = expandScheduleRange(parent, record);
+    if (!Object.keys(expansion).length) return;
+    await updateRecord(parentModule, parent.id, expansion);
+  }
+
+  if (module === "projects") {
+    await expand("projects", record.parent_project_id);
+    return;
+  }
+  if (module === "tasks") {
+    await expand("tasks", record.parent_task_id);
+    await expand("events", record.event_id);
+    await expand("projects", record.project_id);
+    return;
+  }
+  if (module === "events") {
+    await expand("projects", record.project_id);
+    return;
+  }
+  if (record.project_id) await expand("projects", record.project_id);
+}
+
 export async function loadHierarchyPath(module: HierarchyNodeType, id: string): Promise<HierarchyPathItem[]> {
   const path: HierarchyPathItem[] = [];
   let currentType = module;
@@ -430,6 +462,7 @@ export async function createRecords(module: ModuleKey, inputs: Array<Record<stri
     writeLocal(module, [...records, ...readLocal(module)]);
     await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: describeRecordCreation(module, record) })));
     await Promise.all(records.map((record) => syncEntityParent(module, record)));
+    for (const record of records) await syncScheduleAncestors(module, record);
     return records;
   }
   const user = await supabase.auth.getUser();
@@ -441,6 +474,7 @@ export async function createRecords(module: ModuleKey, inputs: Array<Record<stri
   const records = (data ?? []) as AnyRecord[];
   await logActivities(records.map((record) => ({ action: "entity created", entityType: module, entityId: record.id, message: describeRecordCreation(module, record) })));
   await Promise.all(records.map((record) => syncEntityParent(module, record)));
+  for (const record of records) await syncScheduleAncestors(module, record);
   return records;
 }
 
@@ -473,12 +507,14 @@ export async function updateRecord(module: ModuleKey, id: string, input: Record<
     if (!updated) throw new Error("Запись не найдена");
     await logActivity("entity updated", module, id, `${displayName(updated)} обновлено. ${describeRecordChanges(module, existing ?? {}, updated)}`);
     await syncEntityParent(module, updated);
+    await syncScheduleAncestors(module, updated);
     return updated;
   }
   const { data, error } = await supabase.from(config.table).update({ ...normalizedInput, updated_at: timestamp }).eq("id", id).select().single();
   if (error) throw toDataError(error);
   await logActivity("entity updated", module, id, `${displayName(data as AnyRecord)} обновлено. ${describeRecordChanges(module, existing ?? {}, data as AnyRecord)}`);
   await syncEntityParent(module, data as AnyRecord);
+  await syncScheduleAncestors(module, data as AnyRecord);
   return data as AnyRecord;
 }
 
