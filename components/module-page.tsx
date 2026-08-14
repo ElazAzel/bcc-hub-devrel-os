@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, ChartGantt, Grid2X2, List, Plus, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
-import { listRecords, loadAllTaskRecords, updateRecord } from "@/lib/data";
+import { ArrowUpRight, ChartGantt, CornerDownRight, Grid2X2, List, Plus, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
+import { listRecords, loadAllRecords, loadAllTaskRecords, updateRecord } from "@/lib/data";
 import { fieldLabel, formatDateRu, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { groupTasksByStatus } from "@/lib/task-board";
 import { taskUrgency, type TaskUrgency } from "@/lib/task-urgency";
@@ -47,6 +47,7 @@ export function ModulePage({ module }: { module: ModuleKey }) {
   const statusParam = searchParams.get("status") ?? "";
   const result = useQuery({ queryKey: ["records", module, query, status, page], queryFn: () => listRecords(module, { q: query || undefined, statuses: status ? [status] : undefined, page, pageSize: 50 }), placeholderData: keepPreviousData });
   const timingQuery = useQuery({ queryKey: ["task-timing-summary"], queryFn: async () => summarizeTaskTiming(await loadAllTaskRecords()), enabled: module === "tasks", staleTime: 60_000 });
+  const ganttQuery = useQuery({ queryKey: ["task-gantt", query, status], queryFn: () => loadAllRecords("tasks", { q: query || undefined, statuses: status ? [status] : undefined }), enabled: module === "tasks" && view === "gantt", staleTime: 60_000 });
 
   useEffect(() => {
     setSearchInput(query);
@@ -73,7 +74,11 @@ export function ModulePage({ module }: { module: ModuleKey }) {
   if (result.isError) return <ErrorState message={result.error instanceof Error ? result.error.message : "Не удалось загрузить данные."} onRetry={() => void result.refetch()} />;
   const rows = result.data.items;
   const viewOptions = module === "tasks" ? ["list", "board"] as ViewMode[] : module === "tech-radar" ? ["list", "radar", "changelog"] as ViewMode[] : ["list"] as ViewMode[];
-  if (module === "tasks" && view === "gantt") return <div><PageHeader eyebrow="Рабочее пространство" title="Диаграмма Ганта" description="Сроки задач и иерархия субзадач на одной шкале." onSearch={changeSearch} searchValue={searchInput} /><div className="mb-4 flex justify-end"><Button variant="secondary" onClick={() => changeView("board")}><Grid2X2 size={16} />Вернуться к доске</Button></div><GanttView rows={rows} /><Pagination page={result.data.page} hasMore={result.data.hasMore} onChange={(next) => updateUrl({ page: next })} /></div>;
+  if (module === "tasks" && view === "gantt") {
+    if (ganttQuery.isPending) return <LoadingState label="Собираем все задачи для Ганта…" />;
+    if (ganttQuery.isError) return <ErrorState message={ganttQuery.error instanceof Error ? ganttQuery.error.message : "Не удалось загрузить задачи для Ганта."} onRetry={() => void ganttQuery.refetch()} />;
+    return <div><PageHeader eyebrow="Рабочее пространство" title="Диаграмма Ганта" description="Сроки задач и иерархия субзадач на одной шкале." onSearch={changeSearch} searchValue={searchInput} /><div className="mb-4 flex justify-end"><Button variant="secondary" onClick={() => changeView("board")}><Grid2X2 size={16} />Вернуться к доске</Button></div><GanttView rows={ganttQuery.data ?? rows} /></div>;
+  }
   return <div>
     <PageHeader eyebrow="Рабочее пространство" title={moduleCopy(module).label} description={moduleCopy(module).description} onSearch={changeSearch} searchValue={searchInput} />
     {module === "people" && <EmployeeImport />}
@@ -107,7 +112,27 @@ function TaskDueDate({ row, value, enabled, compact = false }: { row: AnyRecord;
   return <span className={`inline-flex flex-wrap items-center gap-1 ${classes[urgency]} ${compact ? "text-xs" : ""}`}>{formatDateRu(value)}{urgency !== "none" && <span className="font-semibold">· {label[urgency]}</span>}</span>;
 }
 
-function TaskBoard({ rows }: { rows: AnyRecord[] }) { const statuses = ["Inbox", "Planned", "In Progress", "Waiting", "Blocked", "Done"]; const grouped = groupTasksByStatus(rows, statuses); return <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-3 xl:grid-cols-6">{statuses.map((status) => <div key={status} className="min-w-[230px] rounded-2xl bg-bcc-soft p-3"><div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold">{ru(status)}</span><span className="chip">{grouped.get(status)?.length ?? 0}</span></div><div className="space-y-2">{grouped.get(status)?.map((row) => <div key={row.id} className="rounded-xl border border-bcc-border bg-white p-3 shadow-sm"><Link href={`/tasks/${row.id}`} className="block transition hover:text-bcc-deep"><div className="text-sm font-medium">{displayName(row)}</div><div className="mt-2 flex items-center justify-between text-xs"><span className="text-[#74747C]">{ru(row.priority ?? "Normal")}</span><TaskDueDate enabled row={row} value={row.due_date} compact /></div></Link><Select aria-label={`Изменить статус: ${displayName(row)}`} className="mt-3 min-h-10 text-xs" value={String(row.status ?? status)} onChange={async (event) => { await updateRecord("tasks", row.id, { status: event.target.value, completed_at: event.target.value === "Done" ? new Date().toISOString() : null }); window.dispatchEvent(new CustomEvent("bcc:data-changed", { detail: "tasks" })); }}><option value="Inbox">{ru("Inbox")}</option><option value="Planned">{ru("Planned")}</option><option value="In Progress">{ru("In Progress")}</option><option value="Waiting">{ru("Waiting")}</option><option value="Blocked">{ru("Blocked")}</option><option value="Done">{ru("Done")}</option></Select></div>)}</div></div>)}</div>; }
+function TaskBoard({ rows }: { rows: AnyRecord[] }) {
+  const statuses = ["Inbox", "Planned", "In Progress", "Waiting", "Blocked", "Done"];
+  const grouped = groupTasksByStatus(rows, statuses);
+  return <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-3 xl:grid-cols-6">
+    {statuses.map((status) => <div key={status} className="min-w-[230px] rounded-2xl bg-bcc-soft p-3">
+      <div className="mb-3 flex items-center justify-between"><span className="text-sm font-semibold">{ru(status)}</span><span className="chip">{grouped.get(status)?.length ?? 0}</span></div>
+      <div className="space-y-2">
+        {grouped.get(status)?.map((row) => {
+          const isSubtask = Boolean(row.parent_task_id);
+          return <div key={row.id} className={`rounded-xl border p-3 shadow-sm ${isSubtask ? "border-bcc-violet/30 bg-[#FBF8FF]" : "border-bcc-border bg-white"}`}>
+            <Link href={`/tasks/${row.id}`} className="block transition hover:text-bcc-deep" aria-label={`${isSubtask ? "Субзадача" : "Основная задача"}: ${displayName(row)}`}>
+              <div className="flex items-start gap-2">{isSubtask && <CornerDownRight size={15} className="mt-0.5 shrink-0 text-bcc-violet" aria-hidden="true" />}<div className="min-w-0 flex-1"><div className="text-sm font-medium">{isSubtask ? "Субзадача · " : ""}{displayName(row)}</div>{isSubtask && <div className="mt-1 truncate text-xs text-bcc-violet">Основная: {String(row.parent_title ?? "задача из иерархии")}</div>}</div></div>
+              <div className="mt-2 flex items-center justify-between text-xs"><span className="text-[#74747C]">{ru(row.priority ?? "Normal")}</span><TaskDueDate enabled row={row} value={row.due_date} compact /></div>
+            </Link>
+            <Select aria-label={`Изменить статус: ${displayName(row)}`} className="mt-3 min-h-10 text-xs" value={String(row.status ?? status)} onChange={async (event) => { await updateRecord("tasks", row.id, { status: event.target.value, completed_at: event.target.value === "Done" ? new Date().toISOString() : null }); window.dispatchEvent(new CustomEvent("bcc:data-changed", { detail: "tasks" })); }}><option value="Inbox">{ru("Inbox")}</option><option value="Planned">{ru("Planned")}</option><option value="In Progress">{ru("In Progress")}</option><option value="Waiting">{ru("Waiting")}</option><option value="Blocked">{ru("Blocked")}</option><option value="Done">{ru("Done")}</option></Select>
+          </div>;
+        })}
+      </div>
+    </div>)}
+  </div>;
+}
 
 function RadarOverview({ rows }: { rows: AnyRecord[] }) { const rings = ["Adopt", "Trial", "Assess", "Hold"]; const grouped = new Map(rings.map((ring) => [ring, [] as AnyRecord[]])); rows.forEach((row) => (grouped.get(String(row.ring)) ?? grouped.get("Assess")!).push(row)); return <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,.7fr)]"><div className="surface relative min-h-[500px] overflow-hidden bg-[#FBF9FF] p-6"><div className="absolute inset-0 opacity-50" style={{ backgroundImage: "radial-gradient(circle at center, transparent 0 18%, #DEC4FF 18.3% 18.6%, transparent 18.9% 38%, #DEC4FF 38.3% 38.6%, transparent 38.9% 58%, #DEC4FF 58.3% 58.6%, transparent 58.9% 78%, #DEC4FF 78.3% 78.6%, transparent 78.9%)" }} /><div className="relative z-10"><div className="eyebrow">Backend · четыре кольца</div><h2 className="mt-2 text-2xl font-semibold">Техрадар BCC HUB</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[#74747C]">Ориентир для решений. Подробности и история изменений доступны в списке.</p><div className="mx-auto mt-12 flex max-w-md flex-wrap justify-center gap-3">{rows.map((row, index) => <Link key={row.id} href={`/tech-radar/${row.id}`} className="flex h-24 w-24 flex-col items-center justify-center rounded-full border-4 border-white bg-bcc-violet px-2 text-center text-xs font-semibold text-white shadow-soft transition hover:scale-105" style={{ transform: `translate(${(index % 3 - 1) * 14}px, ${Math.floor(index / 3) * 6}px)` }}>{String(row.name).split(" ").slice(0, 2).join(" ")}<span className="mt-1 text-[10px] font-normal text-white/75">{ru(row.ring)}</span></Link>)}</div></div></div><div className="space-y-3">{rings.map((ring) => <div key={ring} className="surface p-4"><div className="flex items-center justify-between"><span className="font-semibold">{ru(ring)}</span><span className="chip">{grouped.get(ring)?.length ?? 0}</span></div><div className="mt-3 space-y-2">{grouped.get(ring)?.slice(0, 4).map((row) => <Link key={row.id} href={`/tech-radar/${row.id}`} className="flex items-center justify-between gap-3 text-sm hover:text-bcc-deep"><span className="truncate">{String(row.name)}</span><StatusChip value={row.change_state} /></Link>)}</div></div>)}</div></div>; }
 

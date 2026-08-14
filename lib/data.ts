@@ -166,14 +166,18 @@ export async function loadRecords(module: ModuleKey, query: RecordListQuery = {}
   return result.items;
 }
 
-export async function loadAllTaskRecords(): Promise<AnyRecord[]> {
+export async function loadAllRecords(module: ModuleKey, query: RecordListQuery = {}): Promise<AnyRecord[]> {
   const rows: AnyRecord[] = [];
   for (let page = 1; page <= 100; page += 1) {
-    const result = await listRecords("tasks", { page, pageSize: MAX_PAGE_SIZE });
+    const result = await listRecords(module, { ...query, page, pageSize: MAX_PAGE_SIZE });
     rows.push(...result.items);
     if (!result.hasMore) return rows;
   }
   return rows;
+}
+
+export async function loadAllTaskRecords(): Promise<AnyRecord[]> {
+  return loadAllRecords("tasks");
 }
 
 export async function loadRecordsByIds(module: ModuleKey, ids: string[]): Promise<AnyRecord[]> {
@@ -686,16 +690,6 @@ export async function replaceEntityContacts(entityType: string, entityId: string
     }
   }
   await logActivity("contacts linked", entityType, entityId, `${ids.length} контакт(ов) привязано`);
-}
-
-async function loadAllRecords(module: ModuleKey) {
-  const rows: AnyRecord[] = [];
-  for (let page = 1; page <= 100; page += 1) {
-    const result = await listRecords(module, { page, pageSize: MAX_PAGE_SIZE });
-    rows.push(...result.items);
-    if (!result.hasMore) break;
-  }
-  return rows;
 }
 
 export async function importEmployeeContacts(rows: EmployeeImportRow[]) {

@@ -32,6 +32,17 @@ test("workspace opens and has no horizontal overflow", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
+test("core routes render without browser errors", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  for (const path of ["/", "/tasks", "/tasks?view=gantt", "/calendar", "/analytics"]) {
+    await page.goto(path);
+    await page.waitForLoadState("networkidle");
+  }
+  expect(errors).toEqual([]);
+});
+
 test("quick add opens from the mobile navigation", async ({ page }) => {
   await page.goto("/");
   const quickAdd = page.getByRole("button", { name: "Быстро добавить" }).last();
@@ -111,6 +122,10 @@ test("task detail supports subtasks, comments and relationship map", async ({ pa
   await expect(page.getByRole("heading", { name: "Связи записи" })).toBeVisible();
   await expect(page.getByText("Центр карты")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.goto("/tasks");
+  await expect(page.getByText(/Субзадача ·/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Открыть диаграмму Ганта" }).click();
+  await expect(page.locator("h1", { hasText: "Диаграмма Ганта" })).toBeVisible();
 });
 
 test("task planning dates and @ mentions work in the editor", async ({ page }) => {
