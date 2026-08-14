@@ -31,6 +31,9 @@ const fieldNames: Record<string, string> = {
   title: "Название", description: "Описание", direction: "Направление", project_type: "Тип проекта", status: "Статус", priority: "Приоритет", due_date: "Срок", next_action: "Следующий шаг", first_name: "Имя", last_name: "Фамилия", position: "Роль", department: "Подразделение", organization_name: "Организация", contact_kind: "Тип контакта", email: "Почта", phone: "Телефон", telegram: "Telegram", notes: "Заметки", date: "Дата", type: "Тип", topic: "Тема", summary: "Краткое резюме", decision: "Решение", follow_up_date: "Дата следующего контакта", owed_by: "Кто должен", date_start: "Начало", date_end: "Окончание", location: "Место или формат", audience: "Аудитория", channel: "Канал", content_type: "Тип материала", planned_date: "Дата публикации", external_url: "Ссылка", members_count: "Участников", next_activity_at: "Следующая активность", start_date: "Дата старта", start_time: "Время начала", end_time: "Время окончания", meeting_mode: "Формат встречи", meeting_url: "Ссылка на встречу", level: "Уровень", track: "Трек", category: "Категория", ring: "Кольцо", change_state: "Изменение", version: "Версия", public_url: "Публичная ссылка", context: "Контекст", options: "Варианты", reason: "Почему", consequences: "Последствия", situation: "Ситуация", problem: "Проблема", actions: "Действия", result: "Результат", what_worked: "Что сработало", what_failed: "Что не сработало", reusable_solution: "Готовое решение", project_id: "Проект", event_id: "Событие", task_id: "Задача", parent_task_id: "Родительская задача", source_type: "Источник", source_label: "Источник / ссылка", completed_at: "Завершено"
 };
 
+fieldNames.end_date = "Дата окончания";
+fieldNames.schedule_variance_reason = "Почему срок изменился";
+
 export function moduleCopy(module: ModuleKey) {
   return moduleNames[module] ?? { label: getModule(module)?.label ?? "Раздел", singular: "запись", description: getModule(module)?.description ?? "" };
 }

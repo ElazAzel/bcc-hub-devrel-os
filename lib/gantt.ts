@@ -44,7 +44,7 @@ export function buildGanttRows(records: AnyRecord[], today = new Date()): GanttR
   const fallback = today.toISOString().slice(0, 10);
   const rows = records.map((record) => {
     const start = dateKey(record.start_date ?? record.due_date ?? record.created_at, fallback);
-    const end = dateKey(record.due_date ?? record.start_date ?? record.created_at, start);
+    const end = dateKey(record.end_date ?? record.due_date ?? record.start_date ?? record.created_at, start);
     const ordered = start <= end ? { start, end } : { start: end, end: start };
     return {
       id: record.id,

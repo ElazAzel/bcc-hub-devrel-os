@@ -8,6 +8,7 @@ import { addAmbassadorContribution, addComment, addRelation, addWorkLog, archive
 import { fieldLabel, formatDateRu, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { calculateProjectHealth } from "@/lib/health";
 import { calculateEventReadiness, calculateTaskReadiness, readinessLabel } from "@/lib/readiness";
+import { calculateTaskTiming } from "@/lib/task-timing";
 import { taskUrgency, type TaskUrgency } from "@/lib/task-urgency";
 import { displayName, getModule, isFieldVisible, type AnyRecord, type ConnectionNode, type EntityComment, type EventReadiness as EventReadinessResult, type FieldConfig, type ModuleKey, type TaskReadiness } from "@/lib/types";
 import { hierarchySupports, hierarchyTypeLabel, parentSelectionForRecord, recordFieldsForParent, type HierarchyChild, type HierarchyNodeType, type HierarchyPathItem, type ParentSelection } from "@/lib/hierarchy";
@@ -17,9 +18,17 @@ import { Button, EmptyState, ErrorState, Field, Input, LoadingState, Modal, Sele
 import { ContactPicker } from "./contact-picker";
 import { ContextPicker } from "./context-picker";
 import { CreateNoteModal } from "./create-note-modal";
+import { MentionTextarea, RichTextWithMentions } from "./mentions";
 
 type DetailView = "overview" | "connections";
 type ConnectionGraph = Awaited<ReturnType<typeof loadConnectionGraph>>;
+
+function TaskTimingPanel({ row }: { row: AnyRecord }) {
+  const timing = calculateTaskTiming(row);
+  const stateLabel = { early: "Раньше срока", "on-time": "В срок", late: "Позже срока", open: "В работе", unmeasured: "Нет даты старта" }[timing.state];
+  const stateClass = timing.state === "late" ? "text-[#AF3030]" : timing.state === "early" ? "text-[#177479]" : "text-bcc-deep";
+  return <section className="mb-6 rounded-2xl border border-bcc-border bg-white p-4 shadow-card"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="eyebrow">План и факт</div><div className={`mt-1 text-lg font-semibold ${stateClass}`}>{stateLabel}</div></div><span className="chip">{timing.durationDays !== null ? `${timing.durationDays} дн. фактически` : "Факт не измерен"}</span></div><div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><div><div className="text-xs text-[#8A8A90]">Период</div><div className="mt-1 font-medium">{formatDateRu(row.start_date)} — {formatDateRu(row.end_date ?? row.due_date)}</div></div><div><div className="text-xs text-[#8A8A90]">Плановая длительность</div><div className="mt-1 font-medium">{timing.plannedDays !== null ? `${timing.plannedDays} дн.` : "—"}</div></div><div><div className="text-xs text-[#8A8A90]">Отклонение</div><div className={`mt-1 font-medium ${stateClass}`}>{timing.varianceDays === null ? "—" : timing.varianceDays === 0 ? "0 дн." : `${Math.abs(timing.varianceDays)} дн. ${timing.varianceDays < 0 ? "раньше" : "позже"}`}</div></div></div>{timing.requiresReason && <p className="mt-3 rounded-xl bg-[#FFF9E8] px-3 py-2 text-xs font-medium text-[#765300]">Добавь в поле «Почему срок изменился» комментарий о причине отклонения.</p>}{row.schedule_variance_reason && <p className="mt-3 whitespace-pre-wrap text-sm text-[#5F5F68]">Причина: {String(row.schedule_variance_reason)}</p>}</section>;
+}
 
 export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
   const router = useRouter();
@@ -133,6 +142,7 @@ export function DetailPage({ module, id }: { module: ModuleKey; id: string }) {
     {hierarchyPath.length > 1 && <HierarchyBreadcrumbs path={hierarchyPath} />}
     {module === "tasks" && record.parent_task_id && <div className="mb-6 flex items-center gap-2 rounded-2xl border border-bcc-violet/20 bg-bcc-lilac/40 px-4 py-3 text-sm text-bcc-deep"><span className="font-semibold">Субзадача</span><span>основной задачи{parentTask ? `: ${parentTask.title}` : ""}</span></div>}
     {module === "tasks" && <TaskUrgencyBadge row={record} />}
+    {module === "tasks" && <TaskTimingPanel row={record} />}
 
     <div className="mb-6 flex min-h-11 gap-1 overflow-x-auto rounded-2xl border border-bcc-border bg-white p-1 shadow-card" role="tablist" aria-label="Разделы записи">
       <TabButton active={view === "overview"} onClick={() => setView("overview")} icon={<Edit3 size={15} />}>Обзор</TabButton>
@@ -244,9 +254,9 @@ function RelationModal({ open, onClose, sourceModule, sourceId }: { open: boolea
 
 function RecordField({ field, value, onChange }: { field: FieldConfig; value: string; onChange: (value: string) => void }) {
   const wrapperClass = field.key === "meeting_url" ? "task-meeting-url" : field.key === "location" ? "task-meeting-location" : "";
-  return <div className={wrapperClass}><Field label={fieldLabel(field)}>{field.type === "textarea" ? <Textarea name={field.key} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder} /> : field.type === "select" ? <Select name={field.key} value={value} onChange={(event) => onChange(event.target.value)}>{field.key === "meeting_mode" && <option value="">Не указано</option>}{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input name={field.key} type={field.type === "date" ? "date" : field.type === "time" ? "time" : field.type === "number" ? "number" : field.type === "url" ? "url" : "text"} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder} />}</Field></div>;
+  return <div className={wrapperClass}><Field label={fieldLabel(field)}>{field.type === "textarea" ? <MentionTextarea name={field.key} value={value} onChange={onChange} placeholder={field.placeholder} /> : field.type === "select" ? <Select name={field.key} value={value} onChange={(event) => onChange(event.target.value)}>{field.key === "meeting_mode" && <option value="">Не указано</option>}{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input name={field.key} type={field.type === "date" ? "date" : field.type === "time" ? "time" : field.type === "number" ? "number" : field.type === "url" ? "url" : "text"} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder} />}</Field></div>;
 }
-function DetailField({ field, value }: { field: FieldConfig; value: unknown }) { return <div><div className="text-xs uppercase tracking-[0.08em] text-[#8A8A90]">{fieldLabel(field)}</div><div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-bcc-ink">{field.type === "url" ? <a href={String(value)} target="_blank" rel="noreferrer" className="text-bcc-deep underline">{String(value)}</a> : field.type === "date" ? formatDateRu(value) : field.type === "select" ? ru(value) : String(value)}</div></div>; }
+function DetailField({ field, value }: { field: FieldConfig; value: unknown }) { return <div><div className="text-xs uppercase tracking-[0.08em] text-[#8A8A90]">{fieldLabel(field)}</div><div className="mt-1 text-sm leading-6 text-bcc-ink">{field.type === "url" ? <a href={String(value)} target="_blank" rel="noreferrer" className="text-bcc-deep underline">{String(value)}</a> : field.type === "date" ? formatDateRu(value) : field.type === "select" ? ru(value) : <RichTextWithMentions value={String(value ?? "")} />}</div></div>; }
 function ContextRow({ label, value, accent }: { label: string; value: string; accent?: boolean }) { return <div><div className="text-xs text-[#8A8A90]">{label}</div><div className={`mt-0.5 text-sm leading-5 ${accent ? "font-medium text-bcc-deep" : "text-bcc-ink"}`}>{value}</div></div>; }
 function TaskUrgencyBadge({ row }: { row: AnyRecord }) { const urgency = taskUrgency(row); if (urgency === "none") return null; const labels: Record<Exclude<TaskUrgency, "none">, string> = { overdue: "Просрочено", today: "Дедлайн сегодня", soon: "Дедлайн скоро" }; const classes: Record<Exclude<TaskUrgency, "none">, string> = { overdue: "border-[#F2B8B8] bg-[#FFF1F1] text-[#AF3030]", today: "border-[#F2B8B8] bg-[#FFF1F1] text-[#AF3030]", soon: "border-[#F1D28C] bg-[#FFF9E8] text-[#A56600]" }; return <div className={`mb-6 flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold ${classes[urgency]}`} role="status"><CalendarClock size={16} />{labels[urgency]}: {formatDateRu(row.due_date)}</div>; }
 function TaskReadinessPanel({ readiness }: { readiness: TaskReadiness }) { return <div className="mt-6 rounded-2xl bg-bcc-soft p-4"><div className="flex items-center justify-between gap-3"><div><div className="eyebrow">Готовность по субзадачам</div><div className="mt-1 text-3xl font-semibold">{readiness.percent}%</div></div><span className="chip">{readiness.done}/{readiness.total} готово</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-bcc-primary" style={{ width: `${readiness.percent}%` }} /></div><p className="mt-3 text-xs text-[#74747C]">{readinessLabel(readiness)}{readiness.inProgress ? ` · ${readiness.inProgress} в работе` : ""}{readiness.blocked ? ` · ${readiness.blocked} заблокировано` : ""}</p></div>; }

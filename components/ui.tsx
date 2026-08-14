@@ -2,7 +2,7 @@
 
 import { Loader2, X } from "lucide-react";
 import { Dialog } from "radix-ui";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 export function Button({ variant = "primary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "brand" | "secondary" | "ghost" }) {
   const classes = { primary: "button-primary", brand: "button-brand", secondary: "button-secondary", ghost: "button-ghost" };
@@ -31,7 +31,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 }
 
 export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) { return <input className={`input ${className}`} {...props} />; }
-export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) { return <textarea className={`textarea ${className}`} {...props} />; }
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className = "", ...props }, ref) { return <textarea ref={ref} className={`textarea ${className}`} {...props} />; });
 export function Select({ children, className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) { return <select className={`input ${className}`} {...props}>{children}</select>; }
 
 export function LoadingState({ label = "Загружаем рабочие данные" }: { label?: string }) { return <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-[#74747C]" role="status" aria-live="polite"><Loader2 className="animate-spin" size={18} />{label}</div>; }

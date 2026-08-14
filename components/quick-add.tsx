@@ -6,10 +6,12 @@ import { ArrowLeft, Check, ExternalLink, Plus, Sparkles } from "lucide-react";
 import { createRecord, createRecords, findPotentialDuplicates, replaceEntityContacts } from "@/lib/data";
 import { fieldLabel, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { hierarchySupports, recordFieldsForParent, type ParentSelection } from "@/lib/hierarchy";
+import { calculateTaskTiming } from "@/lib/task-timing";
 import { getModule, isFieldVisible, type AnyRecord, type FieldConfig, type ModuleKey } from "@/lib/types";
-import { Button, Field, Input, Modal, Select, Textarea } from "./ui";
+import { Button, Field, Input, Modal, Select } from "./ui";
 import { ContactPicker } from "./contact-picker";
 import { ContextPicker } from "./context-picker";
+import { MentionTextarea } from "./mentions";
 
 const quickTypes: ModuleKey[] = ["tasks", "projects", "people", "interactions", "commitments", "events", "content", "decisions", "knowledge"];
 const meetupChecklist = ["Аудитория", "Тема и стек", "Подтверждение спикера", "Проверка доклада", "Репетиция", "Лендинг", "Анонс", "Регистрация", "Проверка площадки", "Резервный ноутбук", "Финальная проверка", "QR для обратной связи", "Спасибо участникам", "Ретроспектива"];
@@ -86,6 +88,11 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
     if (module === "tasks") {
       if (recordInput.meeting_mode === "online") recordInput.location = "";
       if (recordInput.meeting_mode === "offline") recordInput.meeting_url = "";
+      if (calculateTaskTiming(recordInput).requiresReason) {
+        setShowDetails(true);
+        setError("Добавь комментарий, почему задача завершилась раньше или позже срока.");
+        return;
+      }
     }
     const normalizedInput = { ...recordInput, ...recordFieldsForParent(module, parent) };
     savingRef.current = true;
@@ -117,5 +124,5 @@ export function QuickAdd({ open, onClose, initialModule }: { open: boolean; onCl
 function QuickField({ field, value, onChange }: { field: FieldConfig; value: string; onChange: (value: string) => void }) {
   const id = `quick-${field.key}`;
   const common = { id, name: field.key, required: field.required };
-  return <Field label={fieldLabel(field)}>{field.type === "textarea" ? <Textarea {...common} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} /> : field.type === "select" ? <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input {...common} type={field.type === "date" ? "date" : field.type === "time" ? "time" : field.type === "number" ? "number" : field.type === "url" ? "url" : field.key === "email" ? "email" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} spellCheck={field.key === "email" || field.type === "url" ? false : undefined} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
+  return <Field label={fieldLabel(field)}>{field.type === "textarea" ? <MentionTextarea {...common} value={value} onChange={onChange} placeholder={field.placeholder ? ru(field.placeholder) : undefined} /> : field.type === "select" ? <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}><option value="">Выбрать…</option>{localizeOptions(field.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select> : <Input {...common} type={field.type === "date" ? "date" : field.type === "time" ? "time" : field.type === "number" ? "number" : field.type === "url" ? "url" : field.key === "email" ? "email" : "text"} inputMode={field.type === "number" ? "decimal" : undefined} spellCheck={field.key === "email" || field.type === "url" ? false : undefined} value={value} onChange={(event) => onChange(event.target.value)} placeholder={field.placeholder ? ru(field.placeholder) : undefined} />}</Field>;
 }

@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent, type TextareaHTMLAttributes } from "react";
 import { createRecord } from "@/lib/data";
 import { recordFieldsForParent, type ParentSelection } from "@/lib/hierarchy";
-import { Button, Field, Input, Modal, Textarea } from "./ui";
+import { Button, Field, Input, Modal } from "./ui";
+import { MentionTextarea } from "./mentions";
+
+function Textarea({ value = "", onChange, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <MentionTextarea {...props} value={String(value)} onChange={(next) => onChange?.({ target: { value: next } } as ChangeEvent<HTMLTextAreaElement>)} />;
+}
 
 export function CreateNoteModal({ open, onClose, parent, onSaved }: { open: boolean; onClose: () => void; parent: ParentSelection; onSaved: () => void }) {
   const [values, setValues] = useState({ title: "", situation: "" });

@@ -35,3 +35,5 @@ Use the Supabase dashboard or `supabase db dump` from an authenticated developme
 `202608130004_sync_entity_hierarchy.sql` adds a database trigger for projects, events, tasks, interactions, commitments, content, documents, decisions and notes. It keeps the canonical parent link synchronized for server-side writes such as Telegram, including when a record is moved or detached.
 
 `202608140001_task_schedule.sql` adds optional task scheduling fields: start/end time, meeting mode, online meeting URL and offline location. The meeting mode constraint accepts `online` or `offline`; all fields are nullable so existing tasks remain valid.
+
+`202608140002_planning_and_mentions.sql` adds optional `start_date` and `end_date` to the workspace entities, backfills existing project/task/event periods, and adds `schedule_variance_reason` for tasks. Task completion timing is derived from `start_date`, `completed_at` and `due_date`; description mentions are stored as safe inline entity references such as `@[Demo Speaker](people:uuid)`.

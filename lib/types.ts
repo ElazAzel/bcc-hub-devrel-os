@@ -16,6 +16,7 @@ export type AnyRecord = {
   parent_title?: string | null;
   parent_task_id?: string | null;
   start_date?: string | null;
+  end_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
   meeting_mode?: "online" | "offline" | string | null;
@@ -24,6 +25,8 @@ export type AnyRecord = {
   status?: string | null;
   priority?: string | null;
   due_date?: string | null;
+  completed_at?: string | null;
+  schedule_variance_reason?: string | null;
   created_at: string;
   updated_at: string;
   archived_at?: string | null;
@@ -210,7 +213,9 @@ export const MODULES: Record<ModuleKey, ModuleConfig> = {
       { key: "status", label: "Статус", type: "select", options: ["Inbox", "Planned", "In Progress", "Waiting", "Blocked", "Done", "Cancelled"] },
       { key: "priority", label: "Приоритет", type: "select", options: ["Low", "Normal", "High", "Critical"] },
       { key: "start_date", label: "Дата старта", type: "date" },
+      { key: "end_date", label: "Дата окончания", type: "date" },
       { key: "due_date", label: "Срок", type: "date" },
+      { key: "schedule_variance_reason", label: "Почему срок изменился", type: "textarea", placeholder: "Что помогло или задержало выполнение?" },
       { key: "start_time", label: "Время начала", type: "time" },
       { key: "end_time", label: "Время окончания", type: "time" },
       { key: "meeting_mode", label: "Формат встречи", type: "select", options: ["online", "offline"] },
@@ -314,8 +319,30 @@ export const MODULES: Record<ModuleKey, ModuleConfig> = {
   }
 };
 
+const SCHEDULE_FIELDS: FieldConfig[] = [
+  { key: "start_date", label: "Дата старта", type: "date" },
+  { key: "end_date", label: "Дата окончания", type: "date" }
+];
+
+function withScheduleFields(config: ModuleConfig): ModuleConfig {
+  const fields = [...config.fields];
+  const hasStart = fields.some((field) => field.key === "start_date" || field.key === "date_start");
+  const hasEnd = fields.some((field) => field.key === "end_date" || field.key === "date_end");
+  if (hasStart && hasEnd) return { ...config, fields };
+  const statusIndex = fields.findIndex((field) => field.key === "status");
+  const insertionIndex = statusIndex >= 0 ? statusIndex : Math.min(2, fields.length);
+  if (!hasStart) fields.splice(insertionIndex, 0, SCHEDULE_FIELDS[0]);
+  if (!hasEnd) {
+    const startIndex = fields.findIndex((field) => field.key === "start_date");
+    fields.splice(startIndex >= 0 ? startIndex + 1 : insertionIndex + 1, 0, SCHEDULE_FIELDS[1]);
+  }
+  return { ...config, fields };
+}
+
+const MODULE_CONFIGS = Object.fromEntries(Object.entries(MODULES).map(([key, config]) => [key, withScheduleFields(config)])) as Record<ModuleKey, ModuleConfig>;
+
 export function getModule(key: string): ModuleConfig | undefined {
-  return MODULES[key as ModuleKey];
+  return MODULE_CONFIGS[key as ModuleKey];
 }
 
 export function displayName(record: AnyRecord): string {

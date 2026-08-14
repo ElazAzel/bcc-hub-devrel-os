@@ -5,10 +5,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, ChartGantt, Grid2X2, List, Plus, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
-import { listRecords, updateRecord } from "@/lib/data";
+import { listRecords, loadAllTaskRecords, updateRecord } from "@/lib/data";
 import { fieldLabel, formatDateRu, localizeOptions, moduleCopy, ru } from "@/lib/i18n";
 import { groupTasksByStatus } from "@/lib/task-board";
 import { taskUrgency, type TaskUrgency } from "@/lib/task-urgency";
+import { summarizeTaskTiming, type TaskTimingSummary as TaskTimingSummaryData } from "@/lib/task-timing";
 import { displayName, getModule, type AnyRecord, type ModuleKey } from "@/lib/types";
 import { requestQuickAdd } from "@/lib/ui-events";
 import { PageHeader } from "./page-header";
@@ -45,6 +46,7 @@ export function ModulePage({ module }: { module: ModuleKey }) {
   const viewParam = initialViewParam;
   const statusParam = searchParams.get("status") ?? "";
   const result = useQuery({ queryKey: ["records", module, query, status, page], queryFn: () => listRecords(module, { q: query || undefined, statuses: status ? [status] : undefined, page, pageSize: 50 }), placeholderData: keepPreviousData });
+  const timingQuery = useQuery({ queryKey: ["task-timing-summary"], queryFn: async () => summarizeTaskTiming(await loadAllTaskRecords()), enabled: module === "tasks", staleTime: 60_000 });
 
   useEffect(() => {
     setSearchInput(query);
@@ -76,12 +78,22 @@ export function ModulePage({ module }: { module: ModuleKey }) {
     <PageHeader eyebrow="Рабочее пространство" title={moduleCopy(module).label} description={moduleCopy(module).description} onSearch={changeSearch} searchValue={searchInput} />
     {module === "people" && <EmployeeImport />}
     {module === "tasks" && <div className="mb-4 flex justify-end"><Button variant="secondary" onClick={() => changeView("gantt")}><ChartGantt size={16} />Открыть диаграмму Ганта</Button></div>}
+    {module === "tasks" && timingQuery.data && <TaskTimingSummary summary={timingQuery.data} />}
     {module === "ambassadors" && <AmbassadorSnapshot rows={rows} />}
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="chip">{result.data.total} записей</span>{status && <button className="chip chip-active" onClick={() => { setStatus(""); updateUrl({ status: undefined, page: 1 }); }}>{ru(status)} ×</button>}</div><div className="flex items-center gap-1 rounded-full border border-bcc-border p-1">{viewOptions.map((option) => <IconTab key={option} active={view === option} label={option === "list" ? "Список" : option === "board" ? "Доска" : option === "radar" ? "Техрадар" : "Изменения"} onClick={() => changeView(option)}>{option === "list" ? <List size={16} /> : option === "board" ? <Grid2X2 size={16} /> : option === "radar" ? <RadarIcon size={16} /> : <span className="text-[10px] font-semibold">Δ</span>}</IconTab>)}<IconTab active={filtersOpen} label="Фильтры" onClick={() => setFiltersOpen(true)}><SlidersHorizontal size={16} /></IconTab></div></div>
     {rows.length === 0 ? <EmptyState title={query ? "Ничего не найдено" : config.emptyTitle.replace(/^[A-Z].*$/, moduleCopy(module).label + " пока нет")} description={query ? "Измени запрос или создай новую запись." : config.emptyDescription} action={<Button variant="brand" onClick={() => requestQuickAdd(module)}><Plus size={16} />Создать {moduleCopy(module).singular}</Button>} /> : view === "board" ? <TaskBoard rows={rows} /> : view === "radar" ? <RadarOverview rows={rows} /> : view === "changelog" ? <RadarChangelog rows={rows} /> : <RecordTable rows={rows} module={module} />}
     {result.data.total > result.data.pageSize && <Pagination page={result.data.page} hasMore={result.data.hasMore} onChange={(next) => updateUrl({ page: next })} />}
     <AdvancedFilters open={filtersOpen} onClose={() => setFiltersOpen(false)} module={module} value={status} onApply={(next) => { setStatus(next); updateUrl({ status: next || undefined, page: 1 }); }} />
   </div>;
+}
+
+function TaskTimingSummary({ summary }: { summary: TaskTimingSummaryData }) {
+  return <section className="surface mb-5 p-4 sm:p-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><div className="eyebrow">Скорость выполнения</div><h2 className="mt-1 text-xl font-semibold">Время задач по факту</h2></div><span className="chip">Измерено: {summary.measured} из {summary.total}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-4"><Metric label="Среднее" value={summary.averageDurationDays === null ? "—" : `${summary.averageDurationDays} дн.`} /><Metric label="Раньше срока" value={String(summary.early)} tone="success" /><Metric label="В срок" value={String(summary.onTime)} /><Metric label="Позже срока" value={String(summary.late)} tone="danger" /></div></section>;
+}
+
+function Metric({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "success" | "danger" }) {
+  const toneClass = tone === "success" ? "text-[#177479]" : tone === "danger" ? "text-[#AF3030]" : "text-bcc-ink";
+  return <div className="rounded-2xl bg-bcc-soft p-3"><div className="text-xs text-[#74747C]">{label}</div><div className={`mt-1 text-2xl font-semibold ${toneClass}`}>{value}</div></div>;
 }
 
 function RecordTable({ rows, module }: { rows: AnyRecord[]; module: ModuleKey }) {

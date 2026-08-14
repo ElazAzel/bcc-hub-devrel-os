@@ -41,7 +41,7 @@ const COMMON_COLUMNS = ["id", "owner_id", "created_at", "updated_at", "archived_
 // columns to every table (which turns a valid authenticated request into 400).
 const MODULE_QUERY_EXTRAS: Partial<Record<ModuleKey, string[]>> = {
   projects: ["parent_project_id", "health_score", "health_state", "last_activity_at", "project_type", "goal", "expected_result", "actual_result"],
-  tasks: ["project_id", "event_id", "parent_task_id", "source_date", "requested_by_contact_id", "expected_result", "blocker", "actual_result", "retrospective", "completed_at"],
+  tasks: ["project_id", "event_id", "parent_task_id", "source_date", "requested_by_contact_id", "expected_result", "blocker", "actual_result", "retrospective", "completed_at", "schedule_variance_reason"],
   people: ["name", "phone", "department", "contact_kind", "relationship_score", "relationship_state", "last_interaction_at"],
   organizations: ["notes"],
   interactions: ["project_id", "event_id", "task_id", "what_i_said", "what_they_said", "follow_up_date"],
@@ -163,6 +163,16 @@ export async function listRecords(module: ModuleKey, query: RecordListQuery = {}
 export async function loadRecords(module: ModuleKey, query: RecordListQuery = {}): Promise<AnyRecord[]> {
   const result = await listRecords(module, { pageSize: MAX_PAGE_SIZE, ...query });
   return result.items;
+}
+
+export async function loadAllTaskRecords(): Promise<AnyRecord[]> {
+  const rows: AnyRecord[] = [];
+  for (let page = 1; page <= 100; page += 1) {
+    const result = await listRecords("tasks", { page, pageSize: MAX_PAGE_SIZE });
+    rows.push(...result.items);
+    if (!result.hasMore) return rows;
+  }
+  return rows;
 }
 
 export async function loadRecordsByIds(module: ModuleKey, ids: string[]): Promise<AnyRecord[]> {
@@ -350,6 +360,22 @@ async function inheritProjectContext(input: Record<string, unknown>): Promise<Re
   return { ...input, project_id: parent.project_id ?? null };
 }
 
+function normalizeRecordInput(module: ModuleKey, input: Record<string, unknown>, existing?: AnyRecord | null): Record<string, unknown> {
+  const next = { ...input };
+  ["start_date", "end_date", "schedule_variance_reason"].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(next, key) && next[key] === "") next[key] = null;
+  });
+  const start = String(next.start_date ?? existing?.start_date ?? "");
+  const end = String(next.end_date ?? existing?.end_date ?? "");
+  if (start && end && start > end) throw new Error("Дата окончания не может быть раньше даты старта");
+  if (module === "tasks") {
+    const nextStatus = String(next.status ?? existing?.status ?? "");
+    if (nextStatus === "Done" && !next.completed_at && String(existing?.status ?? "") !== "Done") next.completed_at = new Date().toISOString();
+    if (Object.prototype.hasOwnProperty.call(next, "status") && nextStatus !== "Done" && String(existing?.status ?? "") === "Done") next.completed_at = null;
+  }
+  return next;
+}
+
 export async function loadHierarchyPath(module: HierarchyNodeType, id: string): Promise<HierarchyPathItem[]> {
   const path: HierarchyPathItem[] = [];
   let currentType = module;
@@ -398,7 +424,7 @@ export async function createRecords(module: ModuleKey, inputs: Array<Record<stri
   if (!config) throw new Error("Неизвестный раздел");
   if (!inputs.length) return [];
   const timestamp = new Date().toISOString();
-  const normalizedInputs = await Promise.all(inputs.map((input) => inheritProjectContext(input)));
+  const normalizedInputs = await Promise.all(inputs.map(async (input) => normalizeRecordInput(module, await inheritProjectContext(input))));
   if (!supabase) {
     const records = normalizedInputs.map((input) => ({ id: crypto.randomUUID(), owner_id: ownerKey(), created_at: timestamp, updated_at: timestamp, ...input }));
     writeLocal(module, [...records, ...readLocal(module)]);
@@ -437,7 +463,7 @@ export async function updateRecord(module: ModuleKey, id: string, input: Record<
     }
   }
   const existing = await loadRecord(module, id);
-  const normalizedInput = await inheritProjectContext(input);
+  const normalizedInput = normalizeRecordInput(module, await inheritProjectContext(input), existing);
   if (isHierarchyNodeType(module)) await validateHierarchyParent(module, id, parentSelectionForRecord(module, normalizedInput as AnyRecord));
   const timestamp = new Date().toISOString();
   if (!supabase) {

@@ -93,3 +93,21 @@ test("task detail supports subtasks, comments and relationship map", async ({ pa
   await expect(page.getByText("Центр карты")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
+
+test("task planning dates and @ mentions work in the editor", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/tasks/seed-11");
+  await expect(page.getByRole("heading", { name: "Подтвердить спикера" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Редактировать" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Дата старта", { exact: true }).fill("2026-08-10");
+  await dialog.getByLabel("Дата окончания", { exact: true }).fill("2026-08-20");
+  const description = dialog.locator("textarea").first();
+  await description.fill("Согласовать детали с @Demo");
+  await expect(dialog.getByRole("option").filter({ hasText: "@Demo Speaker" })).toBeVisible();
+  await dialog.getByRole("option").filter({ hasText: "@Demo Speaker" }).click();
+  await dialog.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("link", { name: "@Demo Speaker" })).toHaveAttribute("href", "/people/seed-21");
+  await expect(page.getByText(/Период/)).toBeVisible();
+});
