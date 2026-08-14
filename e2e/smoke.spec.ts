@@ -43,6 +43,22 @@ test("core routes render without browser errors", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("calendar switches between list and calendar views", async ({ page }) => {
+  await page.goto("/calendar");
+
+  await expect(page.getByRole("tab", { name: "Список" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Календарь" }).click();
+  await expect(page).toHaveURL(/\/calendar\?.*view=calendar/);
+  await expect(page.getByRole("button", { name: "Предыдущий месяц" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Следующий месяц" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Следующий месяц" }).click();
+  await expect(page).toHaveURL(/\/calendar\?.*view=calendar.*month=\d{4}-\d{2}/);
+
+  await page.getByRole("tab", { name: "Список" }).click();
+  await expect(page).toHaveURL(/\/calendar\?.*view=list/);
+});
+
 test("quick add opens from the mobile navigation", async ({ page }) => {
   await page.goto("/");
   const quickAdd = page.getByRole("button", { name: "Быстро добавить" }).last();
